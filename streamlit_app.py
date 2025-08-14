@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 # ================================
 # Paths
@@ -35,86 +36,52 @@ GENRE_MAP = {
 GENRE_LABEL_TO_CODE = {v: k for k, v in GENRE_MAP.items()}
 
 # ================================
-# MBTI 카드(요약) + 4축 설명
+# MBTI 별칭/설명/매핑
 # ================================
-TYPE_DESC = {
-    "ESFJ": {"alias":"ENGAGED","bullets":[
-        "앱 활용도 높음·사회성 강함 (트렌드/추천에 민감)",
-        "모바일 앱 중심, 주 사용 시간 많음",
-        "버라이어티/예능·음악·라이프스타일 선호",
-        "한 줄: 재미와 즐거움을 적극적으로 추구"
-    ]},
-    "ESTJ": {"alias":"PLANNED","bullets":[
-        "자기관리·규율, 시청 시간을 계획적으로 관리",
-        "루틴 기반 규칙적 이용, 불필요 플랫폼 정리",
-        "뉴스/시사·교양/정보·교육 등 실용 정보 선호",
-        "한 줄: 체계적·목적형 OTT 사용"
-    ]},
-    "INTP": {"alias":"TARGETED","bullets":[
-        "분석적·집중형, 특정 주제에 깊게 몰입",
-        "전체 시간은 길지 않아도 선택 시 고밀도 집중",
-        "다큐·지식·시리즈 등 심층 콘텐츠 선호",
-        "한 줄: 관심 분야만 날카롭게 파고듦"
-    ]},
-    "INFP": {"alias":"JOYFUL","bullets":[
-        "감성·자유지향, 기분 전환용 즉흥 시청",
-        "시간 관리 엄격하진 않음, 스트레스 해소 목적",
-        "드라마·로맨스·힐링 예능·음악 선호",
-        "한 줄: 즐거움 중심의 자유로운 선택"
-    ]},
+TYPE_ALIAS = {
+    "ESFJ": "ENGAGED",
+    "ESTJ": "PLANNED",
+    "INTP": "TARGETED",
+    "INFP": "JOYFUL",
 }
 
 # 8개 키워드/철자 변형 → 4MBTI 강제 매핑
 ALIAS_TO_TYPE = {
     "ENGAGED": "ESFJ",
     "STIMULATING": "ESFJ",
-    "FRAGMENTED": "ESFJ",           # 필요시 다른 타입으로 조정 가능
+    "FRAGMENTED": "ESFJ",
     "PLANNED": "ESTJ",
-    "NECESSITYFOCUSED": "ESTJ",     # 하이픈/공백 제거 버전
-    "NECCESITYFOCUSED": "ESTJ",     # 오타 보정
+    "NECESSITYFOCUSED": "ESTJ",
+    "NECCESITYFOCUSED": "ESTJ",
     "TARGETED": "INTP",
     "JOYFUL": "INFP",
     "IDLE": "INFP",
     # MBTI 자체가 나와도 허용
     "ESFJ": "ESFJ", "ESTJ": "ESTJ", "INTP": "INTP", "INFP": "INFP",
 }
-
-# 숫자 → MBTI(필요시 사이드바에서 수정 가능)
 DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
 
 # MBTI 4축 설명
 DIM_DESC = {
-    "E": "외향: OTT 사용량이 많고 다양한 앱을 **적극적으로 활용**합니다.",
-    "I": "내향: OTT 사용량이 적고 혼자 보는 **선택적·조용한 이용**을 선호합니다.",
-    "S": "감각(S): **모바일 앱 중심**으로 일상 속에 자연스럽게 OTT를 사용합니다.",
-    "N": "직관(N): **엔터테인먼트/미디어 방식**으로 호기심에 따라 폭넓게 탐색합니다.",
-    "T": "사고(T): **실용성과 필요성**을 중시하며 효율적으로 콘텐츠를 고릅니다.",
-    "F": "감정(F): **즐거움·공감**을 중시하며 감정적 만족을 위해 시청합니다.",
-    "J": "판단(J): **자기관리와 계획**을 세워 시청 패턴을 꾸준히 유지합니다.",
-    "P": "인식(P): **자유·즉흥적**으로 상황에 따라 유연하게 시청합니다.",
+    "E": "외향(E): OTT 사용량이 많고 다양한 앱을 적극적으로 활용합니다.",
+    "I": "내향(I): OTT 사용량이 적고 혼자 보는 선택적·조용한 이용을 선호합니다.",
+    "S": "감각(S): 모바일 앱 중심으로 일상 속에 자연스럽게 OTT를 사용합니다.",
+    "N": "직관(N): 엔터테인먼트/미디어 방식으로 호기심에 따라 폭넓게 탐색합니다.",
+    "T": "사고(T): 실용성과 필요성을 중시하며 효율적으로 콘텐츠를 고릅니다.",
+    "F": "감정(F): 즐거움·공감을 중시하며 감정적 만족을 위해 시청합니다.",
+    "J": "판단(J): 자기관리와 계획을 세워 시청 패턴을 꾸준히 유지합니다.",
+    "P": "인식(P): 자유·즉흥적으로 상황에 따라 유연하게 시청합니다.",
+}
+
+SUMMARY_LINE = {
+    "ESFJ": "외향(E)+감각(S)+감정(F)+계획형(J) 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
+    "ESTJ": "외향(E)+감각(S)+사고(T)+계획형(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
+    "INTP": "내향(I)+직관(N)+사고(T)+인식형(P) 조합으로, 적은 양을 선택·집중해 깊게 파는 탐구형 사용자입니다.",
+    "INFP": "내향(I)+직관(N)+감정(F)+인식형(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
 }
 
 # ---------- 도우미 ----------
-def render_type_card(label: str):
-    info = TYPE_DESC.get(label)
-    if not info:
-        return
-    st.markdown(
-        f"""
-        <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin-top:8px;">
-          <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">
-            {label} <span style="opacity:.6;">({info['alias']})</span>
-          </div>
-          <ul style="margin:0 0 0 1.1rem;">
-            {''.join(f'<li style="margin:2px 0;">{b}</li>' for b in info['bullets'])}
-          </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 def _norm_str(s: str) -> str:
-    # 대문자·영숫자만 유지(공백/하이픈/밑줄 제거)
     return "".join(ch for ch in str(s).upper() if ch.isalnum())
 
 def mbti_letters(label: str) -> str:
@@ -124,20 +91,6 @@ def mbti_letters(label: str) -> str:
         ok = (four[0] in "EI") and (four[1] in "SN") and (four[2] in "TF") and (four[3] in "JP")
         return four if ok else s[:4]
     return s
-
-def compose_mbti_explanation(label: str) -> Dict[str, str]:
-    mbti = mbti_letters(label)
-    parts = []
-    for ch in mbti[:4]:
-        if ch in DIM_DESC:
-            parts.append(DIM_DESC[ch])
-    summary = {
-        "ESFJ": "활발한 사교성(E)+일상적 앱 활용(S)+즐거움 지향(F)+계획적 관리(J) 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
-        "ESTJ": "외향(E)+감각(S)+실용 지향(T)+계획적(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
-        "INTP": "내향(I)+직관(N)+분석적(T)+유연(P) 조합으로, 적은 양을 선택·집중해 깊게 파는 탐구형 사용자입니다.",
-        "INFP": "내향(I)+직관(N)+감성(F)+유연(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
-    }.get(mbti[:4], "")
-    return {"mbti": mbti[:4], "bullets": parts, "summary": summary}
 
 def resolve_to_mbti(raw_pred, cluster_map: Dict[int, str]) -> str:
     """모델 예측을 ESFJ/ESTJ/INTP/INFP로 강제 변환."""
@@ -161,6 +114,47 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
             label_probs[mapped] += float(p)
     dfp = pd.DataFrame({"class": list(label_probs.keys()), "prob": list(label_probs.values())})
     return dfp.sort_values("prob", ascending=False)
+
+def render_combined_profile(label: str):
+    """MBTI(별칭) + 4축 설명을 하나의 카드로 묶어 출력."""
+    mbti = mbti_letters(label)
+    alias = TYPE_ALIAS.get(mbti, "")
+    bullets = [DIM_DESC[ch] for ch in mbti if ch in DIM_DESC]
+    summary = SUMMARY_LINE.get(mbti, "")
+
+    st.markdown(
+        f"""
+        <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin:8px 0;">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">
+            {mbti} {f"({alias})" if alias else ""}
+          </div>
+          <ul style="margin:0 0 0 1.1rem;">
+            {''.join(f'<li style="margin:2px 0;">{b}</li>' for b in bullets)}
+          </ul>
+          <div style="margin-top:8px;"><b>요약:</b> {summary}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def plot_probs_with_labels(prob_df: pd.DataFrame):
+    """막대 내부에 흰색 볼드 퍼센트 라벨 표시."""
+    if prob_df is None or prob_df.empty:
+        return
+    labels = prob_df["class"].tolist()
+    vals = prob_df["prob"].tolist()
+    perc = [v * 100 for v in vals]
+
+    fig, ax = plt.subplots(figsize=(7, 3.6))
+    bars = ax.bar(labels, vals)
+    ax.set_ylim(0, 1.0)
+    ax.set_ylabel("Probability")
+    for i, b in enumerate(bars):
+        h = b.get_height()
+        txt = f"{perc[i]:.1f}%"
+        ax.text(b.get_x() + b.get_width()/2, h - 0.03, txt,
+                ha="center", va="top", color="white", fontweight="bold", fontsize=11)
+    st.pyplot(fig, clear_figure=True)
 
 # ================================
 # Data & Preprocess
@@ -269,11 +263,11 @@ if not st.session_state.started:
         """
         <style>
         .cover-wrap {
-            height: 60vh;
+            height: 45vh; /* 더 위로 */
             display: flex; align-items: center; justify-content: center; text-align: center;
         }
         .cover-inner h1 { font-size: 3rem; margin-bottom: .25rem; }
-        .cover-inner p  { font-size: 1.05rem; color: #555; margin-bottom: 1.25rem; }
+        .cover-inner p  { font-size: 1.05rem; color: #555; margin-bottom: 1rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -289,6 +283,7 @@ if not st.session_state.started:
         """,
         unsafe_allow_html=True,
     )
+    # 버튼을 더 위쪽에 보이도록 커버를 줄이고 바로 배치
     start_col = st.columns([1,1,1])[1]
     with start_col:
         if st.button("시작하기", type="primary", use_container_width=True):
@@ -316,8 +311,8 @@ with st.sidebar:
         for k in sorted(st.session_state.cluster_to_type.keys()):
             st.session_state.cluster_to_type[k] = st.selectbox(
                 f"클러스터 {k} → 유형",
-                options=list(TYPE_DESC.keys()),
-                index=list(TYPE_DESC.keys()).index(st.session_state.cluster_to_type[k]),
+                options=list(TYPE_ALIAS.keys()),
+                index=list(TYPE_ALIAS.keys()).index(st.session_state.cluster_to_type[k]),
                 key=f"map_{k}"
             )
 
@@ -380,26 +375,16 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
         onoff_selections[colname] = st.checkbox(label, value=False)
 
 # ================================
-# 결과 모달(dialog) 준비
+# 결과 모달(dialog)
 # ================================
 def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
     st.success(f"예측 군집: **{pred_label}**")
-    render_type_card(pred_label)
-    st.markdown("---")
-    combo = compose_mbti_explanation(pred_label)
-    st.subheader(f"MBTI 조합 설명: {combo['mbti']}")
-    cols = st.columns(2)
-    for i, b in enumerate(combo["bullets"]):
-        with cols[i % 2]:
-            st.markdown(f"- {b}")
-    if combo["summary"]:
-        st.markdown(f"**요약:** {combo['summary']}")
+    render_combined_profile(pred_label)
     if prob_df is not None and not prob_df.empty:
         st.markdown("---")
         st.caption("클래스 확률(4유형 집계)")
-        st.bar_chart(prob_df.set_index("class"))
+        plot_probs_with_labels(prob_df)
 
-# Streamlit 1.31+ 의 st.dialog 가 있으면 활용하고, 없으면 CSS 오버레이 폴백
 HAS_DIALOG = hasattr(st, "dialog")
 
 if HAS_DIALOG:
@@ -410,18 +395,13 @@ if HAS_DIALOG:
         _result_body(pred_label, prob_df)
 else:
     def show_result_dialog():
-        # 간단한 오버레이 폴백
         st.markdown("""
         <style>
-        .overlay {
-          position: fixed; top:0; left:0; width:100%; height:100%;
-          background: rgba(0,0,0,.35); z-index: 1000;
-        }
-        .modal {
-          position: fixed; top: 10vh; left: 50%; transform: translateX(-50%);
-          width: min(820px, 92vw); background: #fff; border-radius: 14px;
-          box-shadow: 0 10px 30px rgba(0,0,0,.2); padding: 18px 20px; z-index: 1001;
-        }
+        .overlay { position:fixed; top:0; left:0; width:100%; height:100%;
+                   background: rgba(0,0,0,.35); z-index: 1000; }
+        .modal { position:fixed; top: 8vh; left:50%; transform:translateX(-50%);
+                 width:min(860px,94vw); background:#fff; border-radius:14px;
+                 box-shadow:0 10px 30px rgba(0,0,0,.2); padding:18px 20px; z-index:1001; }
         </style>
         """, unsafe_allow_html=True)
         st.markdown('<div class="overlay"></div><div class="modal">', unsafe_allow_html=True)
@@ -457,10 +437,10 @@ if st.button("예측 실행", type="primary"):
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
     raw_pred = model.predict(Xrow.to_numpy())[0]
 
-    # 1) 최종 MBTI 라벨로 강제 변환 (숫자/별칭 모두 처리)
+    # MBTI 라벨로 강제 변환
     pred_label = resolve_to_mbti(raw_pred, st.session_state.cluster_to_type)
 
-    # 2) 확률을 4유형으로 집계
+    # 확률 집계
     prob_df = None
     if hasattr(model, "predict_proba"):
         try:
@@ -471,14 +451,14 @@ if st.button("예측 실행", type="primary"):
         except Exception:
             pass
 
-    # 3) 모달 표시
+    # 모달 표시
     st.session_state.result_label = pred_label
     st.session_state.result_probs = prob_df
     st.session_state.show_modal = True
     st.rerun()
 
-# 모달 토글
 if st.session_state.show_modal:
     show_result_dialog()
+
 
 
