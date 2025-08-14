@@ -150,10 +150,11 @@ if not st.session_state.started:
         """
         <style>
         .cover-wrap {
-            height: 80vh; display: flex; align-items: center; justify-content: center; text-align: center;
+            height: 60vh;  /* 80vh -> 60vh */
+            display: flex; align-items: center; justify-content: center; text-align: center;
         }
-        .cover-inner h1 { font-size: 3rem; margin-bottom: .5rem; }
-        .cover-inner p  { font-size: 1.1rem; color: #555; margin-bottom: 2rem; }
+        .cover-inner h1 { font-size: 3rem; margin-bottom: .25rem; }
+        .cover-inner p  { font-size: 1.05rem; color: #555; margin-bottom: 1.25rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -185,19 +186,54 @@ with st.sidebar:
     model = load_or_train_model(FEATURE_COLS)
     st.success("스키마 & 모델 준비 완료 ✅")
 
+# ================================
+# Friendly input widgets
+# ================================
+def time_hours_widget(label: str, key: str, minute_mode: bool, max_h: int = 70) -> float:
+    """
+    주당 '시간' 입력.
+    - minute_mode=False: 0.25h(15분) 단위 슬라이더
+    - minute_mode=True : 시/분 분리 입력 → 시간(float)로 변환
+    """
+    if not minute_mode:
+        return st.slider(label, min_value=0.0, max_value=float(max_h),
+                         value=0.0, step=0.25, key=key,
+                         help="15분=0.25h, 30분=0.5h, 1시간=1.0h")
+    else:
+        c_h, c_m = st.columns([2,1])
+        with c_h:
+            hh = st.number_input(f"{label} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
+        with c_m:
+            mm = st.number_input(f"{label} (분)",   min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
+        return float(hh) + float(mm)/60.0
+
+def count_per_week_widget(label: str, key: str, max_cnt: int = 70) -> int:
+    """주당 횟수 입력(정수)."""
+    return st.number_input(label, min_value=0, max_value=max_cnt, value=0, step=1, format="%d", key=key)
+
+# ================================
 # 입력 영역
+# ================================
+st.markdown("### 이용 패턴 입력")
+minute_mode = st.toggle("시/분으로 입력할래요? (끄면 15분 단위 슬라이더)", value=False)
+
 c1, c2, c3 = st.columns(3)
 with c1:
-    major_ott = st.number_input("Major OTT", min_value=0.0, step=0.1, value=0.0)
-    youtube   = st.number_input("YouTube", min_value=0.0, step=0.1, value=0.0)
+    major_ott = time_hours_widget("Major OTT (주당 시청시간, 시간)", key="major", minute_mode=minute_mode)
+    youtube   = time_hours_widget("YouTube (주당 시청시간, 시간)",   key="yt",    minute_mode=minute_mode)
 with c2:
-    minor_ott = st.number_input("Minor OTT", min_value=0.0, step=0.1, value=0.0)
-    shopping  = st.number_input("쇼핑", min_value=0.0, step=0.1, value=0.0)
+    minor_ott = time_hours_widget("Minor OTT (주당 시청시간, 시간)", key="minor", minute_mode=minute_mode)
+    shopping  = count_per_week_widget("쇼핑 (주당 이용 횟수, 회)",     key="shop")
 with c3:
-    sports    = st.number_input("스포츠", min_value=0.0, step=0.1, value=0.0)
-    # ▶ 항상 노출: 미디어_OTT (사용 OTT 수)
-    media_ott_val = st.selectbox("미디어_OTT (사용 OTT 수)", options=list(range(0, 11)), index=0)
+    sports    = time_hours_widget("스포츠 (주당 시청시간, 시간)",     key="sports", minute_mode=minute_mode)
+    media_ott_val = st.selectbox("미디어_OTT (사용 OTT 수)", options=list(range(0, 11)), index=0,
+                                 help="동시에 사용하는 OTT 서비스의 개수")
 
+st.caption("※ 시청시간은 '시간' 단위로 모델에 들어갑니다. (예: 1시간 30분 → 1.5시간)")
+
+# ================================
+# TV 장르(X1,X2,X3) + 동영상 장르 체크
+# ================================
 st.markdown("### TV 장르 순위 선택 (X1, X2, X3)")
 colx1, colx2, colx3 = st.columns(3)
 genre_options = list(GENRE_MAP.values())
@@ -208,7 +244,6 @@ with colx2:
 with colx3:
     x3_label = st.selectbox("3순위 장르", options=genre_options, index=0)
 
-# X6..Xn on/off 체크박스
 st.markdown("### 동영상 콘텐츠 장르 (해당 시 체크)")
 x_onoff_cols = [c for c in FEATURE_COLS if c.startswith("X") and c[1:].isdigit() and int(c[1:]) >= 6]
 onoff_selections: Dict[str, int] = {}
@@ -218,15 +253,17 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
     with cols[i % 3]:
         onoff_selections[colname] = st.checkbox(label, value=False)
 
+# ================================
 # 예측 실행
+# ================================
 if st.button("예측 실행", type="primary"):
     base_nums = {
-        "Major OTT": major_ott,
-        "Minor OTT": minor_ott,
-        "YouTube": youtube,
-        "쇼핑": shopping,
-        "스포츠": sports,
-        "미디어_OTT": float(media_ott_val),   # ← 항상 세팅 (모델 피처에 없으면 자동 무시됨)
+        "Major OTT": major_ott,        # 시간(h)
+        "Minor OTT": minor_ott,        # 시간(h)
+        "YouTube": youtube,            # 시간(h)
+        "스포츠": sports,               # 시간(h)
+        "쇼핑": float(shopping),        # 횟수(정수이지만 float 캐스팅 OK)
+        "미디어_OTT": float(media_ott_val),
     }
     x123_vals = {
         "X1": GENRE_LABEL_TO_CODE.get(x1_label),
