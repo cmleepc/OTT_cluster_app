@@ -1,4 +1,3 @@
-
 import os
 import pickle
 from typing import Dict, List, Tuple
@@ -34,6 +33,70 @@ GENRE_MAP = {
     997: "기타"
 }
 GENRE_LABEL_TO_CODE = {v: k for k, v in GENRE_MAP.items()}
+
+# ================================
+# Type descriptions (MBTI-like for OTT)
+# ================================
+TYPE_DESC = {
+    "ESFJ": {
+        "alias": "ENGAGED",
+        "bullets": [
+            "앱 활용도 높음·사회성 강함 (트렌드/추천에 민감)",
+            "모바일 앱 중심, 주 사용 시간 많음",
+            "버라이어티/예능·음악·라이프스타일 선호",
+            "한 줄: 재미와 즐거움을 적극적으로 추구"
+        ]
+    },
+    "ESTJ": {
+        "alias": "PLANNED",
+        "bullets": [
+            "자기관리·규율, 시청 시간을 계획적으로 관리",
+            "루틴 기반 규칙적 이용, 불필요 플랫폼 정리",
+            "뉴스/시사·교양/정보·교육 등 실용 정보 선호",
+            "한 줄: 체계적·목적형 OTT 사용"
+        ]
+    },
+    "INTP": {
+        "alias": "TARGETED",
+        "bullets": [
+            "분석적·집중형, 특정 주제에 깊게 몰입",
+            "전체 시간은 길지 않아도 선택 시 고밀도 집중",
+            "다큐·지식·시리즈 등 심층 콘텐츠 선호",
+            "한 줄: 관심 분야만 날카롭게 파고듦"
+        ]
+    },
+    "INFP": {
+        "alias": "JOYFUL",
+        "bullets": [
+            "감성·자유지향, 기분 전환용 즉흥 시청",
+            "시간 관리 엄격하진 않음, 스트레스 해소 목적",
+            "드라마·로맨스·힐링 예능·음악 선호",
+            "한 줄: 즐거움 중심의 자유로운 선택"
+        ]
+    },
+}
+
+# 기본 숫자→문자 매핑(필요 시 사이드바에서 즉석 수정 가능)
+DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
+
+def render_type_card(label: str):
+    info = TYPE_DESC.get(label)
+    if not info:
+        st.warning("설명 사전에 없는 유형입니다.")
+        return
+    st.markdown(
+        f"""
+        <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin-top:8px;">
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">
+            {label} <span style="opacity:.6;">({info['alias']})</span>
+          </div>
+          <ul style="margin:0 0 0 1.1rem;">
+            {''.join(f'<li style="margin:2px 0;">{b}</li>' for b in info['bullets'])}
+          </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ================================
 # Data & Preprocess (mirrors modeling.py decisions)
@@ -136,6 +199,26 @@ def build_manual_row(
 
     return row
 
+def resolve_label(raw_pred, model, mapping: Dict[int, str]) -> str:
+    """
+    - 문자열 라벨이면 그대로 반환.
+    - 숫자 라벨이면 mapping으로 변환.
+    """
+    # 문자열 라벨
+    if isinstance(raw_pred, str):
+        return raw_pred
+
+    # 넘파이 스칼라 → 파이썬 기본형
+    if isinstance(raw_pred, (np.generic,)):
+        raw_pred = raw_pred.item()
+
+    # 숫자 라벨 -> 매핑
+    if isinstance(raw_pred, (int, np.integer)):
+        return mapping.get(int(raw_pred), str(raw_pred))
+
+    # 기타 케이스 안전망
+    return str(raw_pred)
+
 # ================================
 # UI
 # ================================
@@ -185,6 +268,27 @@ with st.sidebar:
     FEATURE_COLS, X_LABELS = prepare_training_schema()
     model = load_or_train_model(FEATURE_COLS)
     st.success("스키마 & 모델 준비 완료 ✅")
+
+    # -------- 라벨 매핑(숫자 라벨일 경우) --------
+    # 세션 기본 매핑
+    if "cluster_to_type" not in st.session_state:
+        st.session_state.cluster_to_type = DEFAULT_CLUSTER_TO_TYPE.copy()
+
+    with st.expander("라벨 매핑 (숫자 라벨일 때만 조정하세요)"):
+        # classes_가 존재하고 모두 정수면, 그 목록을 보여주고 매핑 수정 허용
+        classes = getattr(model, "classes_", None)
+        if classes is not None and all(isinstance(c, (int, np.integer)) for c in classes):
+            for c in sorted([int(x) for x in classes]):
+                st.session_state.cluster_to_type[c] = st.selectbox(
+                    f"클러스터 {c} → 유형",
+                    options=list(TYPE_DESC.keys()),
+                    index=list(TYPE_DESC.keys()).index(
+                        st.session_state.cluster_to_type.get(c, DEFAULT_CLUSTER_TO_TYPE.get(c, "ESFJ"))
+                    ),
+                    key=f"map_{c}"
+                )
+        else:
+            st.caption("모델이 문자열 라벨을 직접 반환하면 매핑은 필요하지 않습니다.")
 
 # ================================
 # Friendly input widgets
@@ -262,7 +366,7 @@ if st.button("예측 실행", type="primary"):
         "Minor OTT": minor_ott,        # 시간(h)
         "YouTube": youtube,            # 시간(h)
         "스포츠": sports,               # 시간(h)
-        "쇼핑": float(shopping),        # 횟수(정수이지만 float 캐스팅 OK)
+        "쇼핑": float(shopping),        # 횟수
         "미디어_OTT": float(media_ott_val),
     }
     x123_vals = {
@@ -272,15 +376,26 @@ if st.button("예측 실행", type="primary"):
     }
 
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
-    pred = model.predict(Xrow.to_numpy())[0]
-    st.success(f"예측 군집: **{pred}**")
+    raw_pred = model.predict(Xrow.to_numpy())[0]
 
+    # 숫자/문자 라벨 모두 처리
+    pred_label = resolve_label(raw_pred, model, st.session_state.cluster_to_type)
+
+    st.success(f"예측 군집: **{pred_label}**")
+    render_type_card(pred_label)
+
+    # (옵션) 확률 막대
     if hasattr(model, "predict_proba"):
         try:
             probs = model.predict_proba(Xrow.to_numpy())[0]
             classes = getattr(model, "classes_", None)
             if classes is not None:
-                dfp = pd.DataFrame({"class": classes, "prob": probs}).sort_values("prob", ascending=False)
+                # 각 클래스 라벨을 화면용 문자열로 정규화
+                view_labels = []
+                for c in classes:
+                    view_labels.append(resolve_label(c, model, st.session_state.cluster_to_type))
+                dfp = pd.DataFrame({"class": view_labels, "prob": probs}).sort_values("prob", ascending=False)
                 st.bar_chart(dfp.set_index("class"))
         except Exception:
             pass
+
