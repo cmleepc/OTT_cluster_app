@@ -35,7 +35,7 @@ GENRE_MAP = {
 GENRE_LABEL_TO_CODE = {v: k for k, v in GENRE_MAP.items()}
 
 # ================================
-# (옵션) 타입 설명 카드 (이전과 동일)
+# MBTI 카드(요약) + 4축 설명
 # ================================
 TYPE_DESC = {
     "ESFJ": {"alias":"ENGAGED","bullets":[
@@ -64,6 +64,37 @@ TYPE_DESC = {
     ]},
 }
 
+# 8개 키워드/철자 변형 → 4MBTI 강제 매핑
+ALIAS_TO_TYPE = {
+    "ENGAGED": "ESFJ",
+    "STIMULATING": "ESFJ",
+    "FRAGMENTED": "ESFJ",           # 필요시 다른 타입으로 조정 가능
+    "PLANNED": "ESTJ",
+    "NECESSITYFOCUSED": "ESTJ",     # 하이픈/공백 제거 버전
+    "NECCESITYFOCUSED": "ESTJ",     # 오타 보정
+    "TARGETED": "INTP",
+    "JOYFUL": "INFP",
+    "IDLE": "INFP",
+    # MBTI 자체가 나와도 허용
+    "ESFJ": "ESFJ", "ESTJ": "ESTJ", "INTP": "INTP", "INFP": "INFP",
+}
+
+# 숫자 → MBTI(필요시 사이드바에서 수정 가능)
+DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
+
+# MBTI 4축 설명
+DIM_DESC = {
+    "E": "외향: OTT 사용량이 많고 다양한 앱을 **적극적으로 활용**합니다.",
+    "I": "내향: OTT 사용량이 적고 혼자 보는 **선택적·조용한 이용**을 선호합니다.",
+    "S": "감각(S): **모바일 앱 중심**으로 일상 속에 자연스럽게 OTT를 사용합니다.",
+    "N": "직관(N): **엔터테인먼트/미디어 방식**으로 호기심에 따라 폭넓게 탐색합니다.",
+    "T": "사고(T): **실용성과 필요성**을 중시하며 효율적으로 콘텐츠를 고릅니다.",
+    "F": "감정(F): **즐거움·공감**을 중시하며 감정적 만족을 위해 시청합니다.",
+    "J": "판단(J): **자기관리와 계획**을 세워 시청 패턴을 꾸준히 유지합니다.",
+    "P": "인식(P): **자유·즉흥적**으로 상황에 따라 유연하게 시청합니다.",
+}
+
+# ---------- 도우미 ----------
 def render_type_card(label: str):
     info = TYPE_DESC.get(label)
     if not info:
@@ -82,24 +113,12 @@ def render_type_card(label: str):
         unsafe_allow_html=True,
     )
 
-# ================================
-# NEW) MBTI 4축( E/I, S/N, T/F, J/P ) 설명 조합
-# ================================
-DIM_DESC = {
-    "E": "외향: OTT 사용량이 많고 다양한 앱을 **적극적으로 활용**합니다.",
-    "I": "내향: OTT 사용량이 적고 혼자 보는 **선택적·조용한 이용**을 선호합니다.",
-    "S": "감각(S): **모바일 앱 중심**으로 일상 속에 자연스럽게 OTT를 사용합니다.",
-    "N": "직관(N): **엔터테인먼트/미디어 방식**으로 호기심에 따라 폭넓게 탐색합니다.",
-    "T": "사고(T): **실용성과 필요성**을 중시하며 효율적으로 콘텐츠를 고릅니다.",
-    "F": "감정(F): **즐거움·공감**을 중시하며 감정적 만족을 위해 시청합니다.",
-    "J": "판단(J): **자기관리와 계획**을 세워 시청 패턴을 꾸준히 유지합니다.",
-    "P": "인식(P): **자유·즉흥적**으로 상황에 따라 유연하게 시청합니다.",
-}
+def _norm_str(s: str) -> str:
+    # 대문자·영숫자만 유지(공백/하이픈/밑줄 제거)
+    return "".join(ch for ch in str(s).upper() if ch.isalnum())
 
 def mbti_letters(label: str) -> str:
-    """라벨에서 MBTI 4글자만 추출(ESFJ 등)."""
     s = "".join(ch for ch in str(label).upper() if ch.isalpha())
-    # 첫 4자리가 E/I S/N T/F J/P 패턴이면 그걸 사용
     if len(s) >= 4:
         four = s[:4]
         ok = (four[0] in "EI") and (four[1] in "SN") and (four[2] in "TF") and (four[3] in "JP")
@@ -107,37 +126,41 @@ def mbti_letters(label: str) -> str:
     return s
 
 def compose_mbti_explanation(label: str) -> Dict[str, str]:
-    """ESFJ → 축별 설명 4개 + 요약문 생성."""
     mbti = mbti_letters(label)
     parts = []
     for ch in mbti[:4]:
         if ch in DIM_DESC:
             parts.append(DIM_DESC[ch])
-    # 요약 한 문장(간단 템플릿)
-    if len(mbti) >= 4:
-        summary = {
-            "ESFJ": "활발한 사교성(E)+일상적 앱 활용(S)+즐거움 지향(F)+계획적 관리(J)의 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
-            "ESTJ": "외향(E)+감각(S)+실용 지향(T)+계획적(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
-            "INTP": "내향(I)+직관(N)+분석적(T)+유연(P) 조합으로, 적은 양을 선택·집중해 깊게 파는 탐구형 사용자입니다.",
-            "INFP": "내향(I)+직관(N)+감성(F)+유연(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
-        }.get(mbti[:4], "")
-    else:
-        summary = ""
+    summary = {
+        "ESFJ": "활발한 사교성(E)+일상적 앱 활용(S)+즐거움 지향(F)+계획적 관리(J) 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
+        "ESTJ": "외향(E)+감각(S)+실용 지향(T)+계획적(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
+        "INTP": "내향(I)+직관(N)+분석적(T)+유연(P) 조합으로, 적은 양을 선택·집중해 깊게 파는 탐구형 사용자입니다.",
+        "INFP": "내향(I)+직관(N)+감성(F)+유연(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
+    }.get(mbti[:4], "")
     return {"mbti": mbti[:4], "bullets": parts, "summary": summary}
 
-def render_mbti_combo(label: str):
-    """화면 출력용: 축별 설명 4개와 요약."""
-    combo = compose_mbti_explanation(label)
-    if len(combo["mbti"]) != 4 or not combo["bullets"]:
-        st.info("예측 라벨에서 MBTI 4글자를 확인하지 못해 조합 설명을 건너뜁니다.")
-        return
-    st.subheader(f"MBTI 조합 설명: {combo['mbti']}")
-    cols = st.columns(2)
-    for i, b in enumerate(combo["bullets"]):
-        with cols[i % 2]:
-            st.markdown(f"- {b}")
-    if combo["summary"]:
-        st.markdown(f"**요약:** {combo['summary']}")
+def resolve_to_mbti(raw_pred, cluster_map: Dict[int, str]) -> str:
+    """모델 예측을 ESFJ/ESTJ/INTP/INFP로 강제 변환."""
+    if isinstance(raw_pred, (np.generic,)): raw_pred = raw_pred.item()
+    if isinstance(raw_pred, str):
+        key = _norm_str(raw_pred)
+        if key in ALIAS_TO_TYPE:
+            return ALIAS_TO_TYPE[key]
+        if key.isdigit():
+            return cluster_map.get(int(key), str(raw_pred))
+        return str(raw_pred)
+    if isinstance(raw_pred, (int, np.integer)):
+        return cluster_map.get(int(raw_pred), str(raw_pred))
+    return str(raw_pred)
+
+def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.DataFrame:
+    label_probs: Dict[str, float] = {"ESFJ":0.0, "ESTJ":0.0, "INTP":0.0, "INFP":0.0}
+    for c, p in zip(classes, probs):
+        mapped = resolve_to_mbti(c, cluster_map)
+        if mapped in label_probs:
+            label_probs[mapped] += float(p)
+    dfp = pd.DataFrame({"class": list(label_probs.keys()), "prob": list(label_probs.values())})
+    return dfp.sort_values("prob", ascending=False)
 
 # ================================
 # Data & Preprocess
@@ -210,7 +233,7 @@ def load_or_train_model(feature_cols: List[str]):
     return model
 
 # ================================
-# Utilities
+# Utilities for input row
 # ================================
 def empty_feature_row(feature_cols: List[str]) -> pd.DataFrame:
     return pd.DataFrame([np.zeros(len(feature_cols), dtype=float)], columns=feature_cols)
@@ -223,17 +246,13 @@ def build_manual_row(
 ) -> pd.DataFrame:
     row = empty_feature_row(feature_cols)
     for k, v in base_nums.items():
-        if k in row.columns:
-            row.at[0, k] = float(v)
+        if k in row.columns: row.at[0, k] = float(v)
     for xk, val in x123_values.items():
-        if val is None:
-            continue
+        if val is None: continue
         col_name = f"{xk}_{val}"
-        if col_name in row.columns:
-            row.at[0, col_name] = 1.0
+        if col_name in row.columns: row.at[0, col_name] = 1.0
     for xk, onoff in onoff_map.items():
-        if xk in row.columns:
-            row.at[0, xk] = int(onoff)
+        if xk in row.columns: row.at[0, xk] = int(onoff)
     return row
 
 # ================================
@@ -250,7 +269,7 @@ if not st.session_state.started:
         """
         <style>
         .cover-wrap {
-            height: 60vh;  /* 80vh -> 60vh */
+            height: 60vh;
             display: flex; align-items: center; justify-content: center; text-align: center;
         }
         .cover-inner h1 { font-size: 3rem; margin-bottom: .25rem; }
@@ -286,8 +305,24 @@ with st.sidebar:
     model = load_or_train_model(FEATURE_COLS)
     st.success("스키마 & 모델 준비 완료 ✅")
 
+    # 숫자 라벨 매핑(필요 시 조정)
+    if "cluster_to_type" not in st.session_state:
+        st.session_state.cluster_to_type = DEFAULT_CLUSTER_TO_TYPE.copy()
+
+    with st.expander("라벨 매핑 (숫자/별칭일 때 조정)"):
+        classes = getattr(model, "classes_", None)
+        if classes is not None:
+            st.caption(f"model.classes_: {list(classes)}")
+        for k in sorted(st.session_state.cluster_to_type.keys()):
+            st.session_state.cluster_to_type[k] = st.selectbox(
+                f"클러스터 {k} → 유형",
+                options=list(TYPE_DESC.keys()),
+                index=list(TYPE_DESC.keys()).index(st.session_state.cluster_to_type[k]),
+                key=f"map_{k}"
+            )
+
 # ================================
-# Friendly input widgets
+# 입력 위젯(시간/횟수 분리)
 # ================================
 def time_hours_widget(label: str, key: str, minute_mode: bool, max_h: int = 70) -> float:
     if not minute_mode:
@@ -305,9 +340,6 @@ def time_hours_widget(label: str, key: str, minute_mode: bool, max_h: int = 70) 
 def count_per_week_widget(label: str, key: str, max_cnt: int = 70) -> int:
     return st.number_input(label, min_value=0, max_value=max_cnt, value=0, step=1, format="%d", key=key)
 
-# ================================
-# 입력 영역
-# ================================
 st.markdown("### 이용 패턴 입력")
 minute_mode = st.toggle("시/분으로 입력할래요? (끄면 15분 단위 슬라이더)", value=False)
 
@@ -348,8 +380,65 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
         onoff_selections[colname] = st.checkbox(label, value=False)
 
 # ================================
+# 결과 모달(dialog) 준비
+# ================================
+def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
+    st.success(f"예측 군집: **{pred_label}**")
+    render_type_card(pred_label)
+    st.markdown("---")
+    combo = compose_mbti_explanation(pred_label)
+    st.subheader(f"MBTI 조합 설명: {combo['mbti']}")
+    cols = st.columns(2)
+    for i, b in enumerate(combo["bullets"]):
+        with cols[i % 2]:
+            st.markdown(f"- {b}")
+    if combo["summary"]:
+        st.markdown(f"**요약:** {combo['summary']}")
+    if prob_df is not None and not prob_df.empty:
+        st.markdown("---")
+        st.caption("클래스 확률(4유형 집계)")
+        st.bar_chart(prob_df.set_index("class"))
+
+# Streamlit 1.31+ 의 st.dialog 가 있으면 활용하고, 없으면 CSS 오버레이 폴백
+HAS_DIALOG = hasattr(st, "dialog")
+
+if HAS_DIALOG:
+    @st.dialog("예측 결과", width="large")
+    def show_result_dialog():
+        pred_label = st.session_state.get("result_label")
+        prob_df = st.session_state.get("result_probs")
+        _result_body(pred_label, prob_df)
+else:
+    def show_result_dialog():
+        # 간단한 오버레이 폴백
+        st.markdown("""
+        <style>
+        .overlay {
+          position: fixed; top:0; left:0; width:100%; height:100%;
+          background: rgba(0,0,0,.35); z-index: 1000;
+        }
+        .modal {
+          position: fixed; top: 10vh; left: 50%; transform: translateX(-50%);
+          width: min(820px, 92vw); background: #fff; border-radius: 14px;
+          box-shadow: 0 10px 30px rgba(0,0,0,.2); padding: 18px 20px; z-index: 1001;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="overlay"></div><div class="modal">', unsafe_allow_html=True)
+        pred_label = st.session_state.get("result_label")
+        prob_df = st.session_state.get("result_probs")
+        _result_body(pred_label, prob_df)
+        if st.button("닫기", use_container_width=True):
+            st.session_state.show_modal = False
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# ================================
 # 예측 실행
 # ================================
+if "show_modal" not in st.session_state:
+    st.session_state.show_modal = False
+
 if st.button("예측 실행", type="primary"):
     base_nums = {
         "Major OTT": major_ott,
@@ -367,23 +456,29 @@ if st.button("예측 실행", type="primary"):
 
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
     raw_pred = model.predict(Xrow.to_numpy())[0]
-    pred_label = str(raw_pred)  # 모델이 ESFJ/ESTJ/INTP/INFP를 직접 주는 전제
 
-    st.success(f"예측 군집: **{pred_label}**")
-    # (옵션) 기존 카드
-    render_type_card(pred_label)
-    # NEW) 4축 조합 설명
-    render_mbti_combo(pred_label)
+    # 1) 최종 MBTI 라벨로 강제 변환 (숫자/별칭 모두 처리)
+    pred_label = resolve_to_mbti(raw_pred, st.session_state.cluster_to_type)
 
-    # (옵션) 확률 막대
+    # 2) 확률을 4유형으로 집계
+    prob_df = None
     if hasattr(model, "predict_proba"):
         try:
             probs = model.predict_proba(Xrow.to_numpy())[0]
             classes = getattr(model, "classes_", None)
             if classes is not None:
-                dfp = pd.DataFrame({"class": classes, "prob": probs}).sort_values("prob", ascending=False)
-                st.bar_chart(dfp.set_index("class"))
+                prob_df = aggregate_probs_by_type(classes, probs, st.session_state.cluster_to_type)
         except Exception:
             pass
+
+    # 3) 모달 표시
+    st.session_state.result_label = pred_label
+    st.session_state.result_probs = prob_df
+    st.session_state.show_modal = True
+    st.rerun()
+
+# 모달 토글
+if st.session_state.show_modal:
+    show_result_dialog()
 
 
