@@ -17,7 +17,7 @@ SECOND_CSV  = APP_DIR / "second.csv"
 MODEL_PKL   = APP_DIR / "model.pkl"
 
 # ================================
-# OTT 그룹 설명 (팝오버)
+# OTT 그룹 안내 (툴팁에 사용)
 # ================================
 MAJOR_APPS = [
     "Disney+ (디즈니+)",
@@ -84,7 +84,7 @@ DIM_DESC = {
     "P": "인식(P): 자유·즉흥적으로 상황에 따라 유연하게 시청합니다.",
 }
 
-# 한 줄 강조(‘요약’/‘조합’ 제거, 자연스러운 문장)
+# 한 줄 강조(자연스러운 문장)
 SUMMARY_LINE = {
     "ESFJ": "많이 보고 자주 즐기지만 사용 습관은 정돈되어 있어요.",
     "ESTJ": "목적과 효율을 중시하며 계획적으로 시청하는 편입니다.",
@@ -118,10 +118,7 @@ def resolve_to_mbti(raw_pred, cluster_map: Dict[int, str]) -> str:
     return str(raw_pred)
 
 def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.DataFrame:
-    """
-    모델 클래스 확률을 ESFJ/ESTJ/INTP/INFP로 모아 집계하고,
-    집계합으로 정규화(합계 1.0)하여 반환.
-    """
+    """클래스 확률을 ESFJ/ESTJ/INTP/INFP로 집계 후 정규화(합 1.0)."""
     label_probs: Dict[str, float] = {"ESFJ":0.0, "ESTJ":0.0, "INTP":0.0, "INFP":0.0}
     for c, p in zip(classes, probs):
         mapped = resolve_to_mbti(c, cluster_map)
@@ -135,10 +132,10 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
     return dfp.sort_values("prob", ascending=False)
 
 def render_combined_profile(label: str):
+    """프로필 카드(요약 문구 제외 — 상단 타이틀에 표시)."""
     mbti = mbti_letters(label)
     alias = TYPE_ALIAS.get(mbti, "")
     bullets = [DIM_DESC[ch] for ch in mbti if ch in DIM_DESC]
-    summary = SUMMARY_LINE.get(mbti, "")
     st.markdown(
         f"""
         <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin:8px 0;">
@@ -148,13 +145,12 @@ def render_combined_profile(label: str):
           <ul style="margin:0 0 0 1.1rem;">
             {''.join(f'<li style="margin:2px 0;">{b}</li>' for b in bullets)}
           </ul>
-          <div style="margin-top:10px;font-weight:700;">{summary}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-# ---- 막대 라벨: 항상 막대 위(검정) + 상단 여유 ----
+# ---- 확률 막대: 항상 막대 위(검정) ----
 def plot_probs_with_labels(prob_df: pd.DataFrame):
     if prob_df is None or prob_df.empty:
         return
@@ -279,15 +275,16 @@ if "modal_token" not in st.session_state:
 if "modal_last_shown" not in st.session_state:
     st.session_state.modal_last_shown = -1
 
-# ---- 커버 ----
+# ---- 커버 (좌정렬 + 최대너비로 어색함 해소) ----
 if not st.session_state.started:
     st.markdown(
         """
         <style>
-        .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; text-align:center; }
-        .cover-inner h1 { font-size:3rem; margin-bottom:.25rem; }
-        .cover-inner p  { font-size:1.05rem; color:#555; margin-bottom:.5rem; }
-        .team { margin-top:.25rem; color:#777; font-weight:600; }
+        .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; }
+        .cover-inner { width:min(92vw, 960px); }
+        .cover-inner h1 { font-size:3rem; margin:0 0 .25rem 0; text-align:left; }
+        .cover-inner p  { font-size:1.05rem; color:#555; margin:.25rem 0; text-align:left; }
+        .team { margin-top:.25rem; color:#777; font-weight:600; text-align:left; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -335,38 +332,31 @@ with st.sidebar:
             )
 
 # ================================
-# 입력부: (시간)(분) 쌍 – 동일 너비 + 팝오버
+# 입력부: (시간)(분) 쌍 – 동일 너비, 툴팁은 물음표(?) 아이콘에 hover
 # ================================
 st.markdown("### 앱 이용 패턴 입력")
 
-def time_pair_with_popover(col_h, col_m, title: str, key: str, help_text: str | None = None,
-                           max_h: int = 72) -> float:
-    # 라벨 행: 텍스트 + ⓘ 팝오버(아래로 펼침)
+def time_pair_with_help(col_h, col_m, title: str, key: str, help_text: str | None = None,
+                        max_h: int = 72) -> float:
     with col_h:
-        lc1, lc2 = st.columns([10,1])
-        with lc1:
-            st.markdown(f"**{title} (시간)**")
-        with lc2:
-            if help_text:
-                with st.popover("ⓘ"):
-                    st.markdown(help_text)
-        hh = st.number_input("", min_value=0, max_value=max_h, value=0, step=1,
-                             key=f"{key}_h", label_visibility="collapsed")
+        hh = st.number_input(f"{title} (시간)",
+                             min_value=0, max_value=max_h, value=0, step=1,
+                             key=f"{key}_h", help=help_text)
     with col_m:
-        st.markdown("**(분)**")
-        mm = st.number_input("", min_value=0, max_value=59, value=0, step=5,
-                             key=f"{key}_m", label_visibility="collapsed")
+        mm = st.number_input("(분)",
+                             min_value=0, max_value=59, value=0, step=5,
+                             key=f"{key}_m")
     return float(hh) + float(mm)/60.0
 
 # 1행: Major OTT | Minor OTT
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-major_ott = time_pair_with_popover(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
-minor_ott = time_pair_with_popover(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
+major_ott = time_pair_with_help(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
+minor_ott = time_pair_with_help(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
 
 # 2행: YouTube | 스포츠
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-youtube = time_pair_with_popover(r2c1, r2c2, "YouTube", "yt")
-sports  = time_pair_with_popover(r2c3, r2c4, "스포츠", "sports")
+youtube = time_pair_with_help(r2c1, r2c2, "YouTube", "yt")
+sports  = time_pair_with_help(r2c3, r2c4, "스포츠", "sports")
 
 # 3행: 쇼핑 / 사용 OTT 수
 r3c1, r3c2 = st.columns(2)
@@ -404,11 +394,13 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
 # 결과 모달(dialog)
 # ================================
 def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
-    # 큰 타이틀(예측 군집: 제거)
+    # 상단 라인: MBTI 크게 + 한 줄 설명을 오른쪽에 배치
+    summary = SUMMARY_LINE.get(pred_label, "")
     st.markdown(
         f"""
-        <div style="background:#eaf7ee;border-radius:10px;padding:14px 16px;margin:0 0 12px 0;">
-          <span style="font-size:1.6rem;font-weight:800;">{pred_label}</span>
+        <div style="background:#eaf7ee;border-radius:10px;padding:14px 18px;margin:0 0 12px 0; display:flex; gap:14px; align-items:center;">
+          <span style="font-size:1.6rem;font-weight:900;">{pred_label}</span>
+          <span style="font-size:1.05rem;font-weight:700;">: {summary} 유형</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -493,7 +485,6 @@ if st.session_state.show_modal:
     if st.session_state.modal_last_shown != token:
         show_result_dialog()
         st.session_state.modal_last_shown = token
-
 
 
 
