@@ -17,7 +17,7 @@ SECOND_CSV  = APP_DIR / "second.csv"
 MODEL_PKL   = APP_DIR / "model.pkl"
 
 # ================================
-# OTT 그룹 안내 (툴팁에 사용)
+# OTT 그룹 안내 (팝오버 콘텐츠)
 # ================================
 MAJOR_APPS = [
     "Disney+ (디즈니+)",
@@ -132,7 +132,7 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
     return dfp.sort_values("prob", ascending=False)
 
 def render_combined_profile(label: str):
-    """프로필 카드(요약 문구 제외 — 상단 타이틀에 표시)."""
+    """프로필 카드(요약 문구는 상단 라인에서 처리)."""
     mbti = mbti_letters(label)
     alias = TYPE_ALIAS.get(mbti, "")
     bullets = [DIM_DESC[ch] for ch in mbti if ch in DIM_DESC]
@@ -275,16 +275,14 @@ if "modal_token" not in st.session_state:
 if "modal_last_shown" not in st.session_state:
     st.session_state.modal_last_shown = -1
 
-# ---- 커버 (좌정렬 + 최대너비로 어색함 해소) ----
+# ---- 커버 (가운데 정렬, 팀 문구 제거, 부제 강조) ----
 if not st.session_state.started:
     st.markdown(
         """
         <style>
-        .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; }
-        .cover-inner { width:min(92vw, 960px); }
-        .cover-inner h1 { font-size:3rem; margin:0 0 .25rem 0; text-align:left; }
-        .cover-inner p  { font-size:1.05rem; color:#555; margin:.25rem 0; text-align:left; }
-        .team { margin-top:.25rem; color:#777; font-weight:600; text-align:left; }
+        .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; text-align:center; }
+        .cover-inner h1 { font-size:3rem; margin-bottom:.25rem; }
+        .cover-inner p  { font-size:1.2rem; color:#444; font-weight:600; margin-top:.5rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -295,7 +293,6 @@ if not st.session_state.started:
           <div class="cover-inner">
             <h1>📺 OTT 성향 예측 및 페르소나 분류 시스템</h1>
             <p>OTT를 포함한 주요 앱 사용 패턴과 선호 콘텐츠 장르를 입력해주세요!</p>
-            <div class="team">팀: 탈전공지대</div>
           </div>
         </div>
         """,
@@ -332,31 +329,37 @@ with st.sidebar:
             )
 
 # ================================
-# 입력부: (시간)(분) 쌍 – 동일 너비, 툴팁은 물음표(?) 아이콘에 hover
+# 입력부: (시간)(분) 쌍 – 동일 너비, 팝오버(아래로 펼침)
 # ================================
 st.markdown("### 앱 이용 패턴 입력")
 
-def time_pair_with_help(col_h, col_m, title: str, key: str, help_text: str | None = None,
-                        max_h: int = 72) -> float:
+def time_pair_with_popover(col_h, col_m, title: str, key: str, pop_text: str | None = None,
+                           max_h: int = 72) -> float:
     with col_h:
-        hh = st.number_input(f"{title} (시간)",
-                             min_value=0, max_value=max_h, value=0, step=1,
-                             key=f"{key}_h", help=help_text)
+        lc1, lc2 = st.columns([10,1])
+        with lc1:
+            st.markdown(f"**{title} (시간)**")
+        with lc2:
+            if pop_text:
+                with st.popover("❓"):
+                    st.markdown(pop_text)
+        hh = st.number_input("", min_value=0, max_value=max_h, value=0, step=1,
+                             key=f"{key}_h", label_visibility="collapsed")
     with col_m:
-        mm = st.number_input("(분)",
-                             min_value=0, max_value=59, value=0, step=5,
-                             key=f"{key}_m")
+        st.markdown("**(분)**")
+        mm = st.number_input("", min_value=0, max_value=59, value=0, step=5,
+                             key=f"{key}_m", label_visibility="collapsed")
     return float(hh) + float(mm)/60.0
 
 # 1행: Major OTT | Minor OTT
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-major_ott = time_pair_with_help(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
-minor_ott = time_pair_with_help(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
+major_ott = time_pair_with_popover(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
+minor_ott = time_pair_with_popover(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
 
 # 2행: YouTube | 스포츠
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-youtube = time_pair_with_help(r2c1, r2c2, "YouTube", "yt")
-sports  = time_pair_with_help(r2c3, r2c4, "스포츠", "sports")
+youtube = time_pair_with_popover(r2c1, r2c2, "YouTube", "yt")
+sports  = time_pair_with_popover(r2c3, r2c4, "스포츠", "sports")
 
 # 3행: 쇼핑 / 사용 OTT 수
 r3c1, r3c2 = st.columns(2)
@@ -394,13 +397,13 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
 # 결과 모달(dialog)
 # ================================
 def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
-    # 상단 라인: MBTI 크게 + 한 줄 설명을 오른쪽에 배치
+    # 상단 라인: MBTI 크게 + 한 줄 설명을 오른쪽에(“유형” 제거)
     summary = SUMMARY_LINE.get(pred_label, "")
     st.markdown(
         f"""
         <div style="background:#eaf7ee;border-radius:10px;padding:14px 18px;margin:0 0 12px 0; display:flex; gap:14px; align-items:center;">
           <span style="font-size:1.6rem;font-weight:900;">{pred_label}</span>
-          <span style="font-size:1.05rem;font-weight:700;">: {summary} 유형</span>
+          <span style="font-size:1.05rem;font-weight:700;">: {summary}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -485,6 +488,7 @@ if st.session_state.show_modal:
     if st.session_state.modal_last_shown != token:
         show_result_dialog()
         st.session_state.modal_last_shown = token
+
 
 
 
