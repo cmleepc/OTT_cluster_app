@@ -17,6 +17,30 @@ SECOND_CSV  = APP_DIR / "second.csv"
 MODEL_PKL   = APP_DIR / "model.pkl"
 
 # ================================
+# OTT 그룹 설명 (툴팁에 사용)
+# ================================
+MAJOR_APPS = [
+    "Disney+ (디즈니+)",
+    "쿠팡플레이",
+    "Wavve(웨이브)",
+    "TVING",
+    "Netflix(넷플릭스)",
+]
+MINOR_APPS = [
+    "아프리카TV (AfreecaTV)",
+    "Twitch: 게임 생방송",
+    "U+모바일tv",
+    "왓챠",
+    "SBS - 온에어/VOD/방청",
+    "KBS+",
+    "NAVER NOW",
+    "MBC",
+    "네이버 시리즈온 (SERIES ON)",
+]
+MAJOR_HELP = "메이저 OTT 예시:\n- " + "\n- ".join(MAJOR_APPS)
+MINOR_HELP = "마이너 OTT 예시:\n- " + "\n- ".join(MINOR_APPS)
+
+# ================================
 # Genre map
 # ================================
 GENRE_MAP = {
@@ -39,7 +63,6 @@ GENRE_LABEL_TO_CODE = {v: k for k, v in GENRE_MAP.items()}
 # MBTI 별칭/설명/매핑
 # ================================
 TYPE_ALIAS = {"ESFJ": "ENGAGED", "ESTJ": "PLANNED", "INTP": "TARGETED", "INFP": "JOYFUL"}
-
 ALIAS_TO_TYPE = {
     "ENGAGED": "ESFJ", "STIMULATING": "ESFJ", "FRAGMENTED": "ESFJ",
     "PLANNED": "ESTJ", "NECESSITYFOCUSED": "ESTJ", "NECCESITYFOCUSED": "ESTJ",
@@ -92,11 +115,23 @@ def resolve_to_mbti(raw_pred, cluster_map: Dict[int, str]) -> str:
     return str(raw_pred)
 
 def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.DataFrame:
+    """
+    모델 클래스 확률을 ESFJ/ESTJ/INTP/INFP로 모아 집계하고,
+    집계합으로 정규화(합계 1.0)하여 반환.
+    """
     label_probs: Dict[str, float] = {"ESFJ":0.0, "ESTJ":0.0, "INTP":0.0, "INFP":0.0}
+
     for c, p in zip(classes, probs):
         mapped = resolve_to_mbti(c, cluster_map)
         if mapped in label_probs:
             label_probs[mapped] += float(p)
+        # 매핑되지 않는 클래스는 무시(= 집계합에서 자동 제외)
+
+    total = sum(label_probs.values())
+    if total > 0:
+        for k in label_probs:
+            label_probs[k] /= total
+
     dfp = pd.DataFrame({"class": list(label_probs.keys()), "prob": list(label_probs.values())})
     return dfp.sort_values("prob", ascending=False)
 
@@ -120,7 +155,7 @@ def render_combined_profile(label: str):
         unsafe_allow_html=True,
     )
 
-# ---- 막대 라벨: 낮은 막대는 바깥(검정), 높은 막대는 안쪽(흰색) ----
+# ---- 막대 라벨: 항상 막대 위(검정) + 상단 여유 ----
 def plot_probs_with_labels(prob_df: pd.DataFrame):
     if prob_df is None or prob_df.empty:
         return
@@ -130,21 +165,15 @@ def plot_probs_with_labels(prob_df: pd.DataFrame):
 
     fig, ax = plt.subplots(figsize=(7, 3.6))
     bars = ax.bar(labels, vals)
-    ax.set_ylim(0, 1.05)
+    ax.set_ylim(0, 1.08)
     ax.set_ylabel("Probability")
 
-    INSIDE_TH = 0.12
     for i, b in enumerate(bars):
         h = b.get_height()
-        txt = f"{perc[i]:.1f}%"
-        if h >= INSIDE_TH:
-            y = max(h - 0.03, 0.02)
-            ax.text(b.get_x() + b.get_width()/2, y, txt,
-                    ha="center", va="top", color="white", fontweight="bold", fontsize=11)
-        else:
-            y = min(h + 0.03, 1.02)
-            ax.text(b.get_x() + b.get_width()/2, y, txt,
-                    ha="center", va="bottom", color="black", fontweight="bold", fontsize=11)
+        y = min(h + 0.03, 1.05)
+        ax.text(b.get_x() + b.get_width()/2, y, f"{perc[i]:.1f}%",
+                ha="center", va="bottom", color="black", fontweight="bold", fontsize=11)
+
     st.pyplot(fig, clear_figure=True)
 
 # ================================
@@ -241,6 +270,7 @@ def build_manual_row(
 # ================================
 st.set_page_config(page_title="OTT 이용자 군집 예측", layout="wide")
 
+# session state
 if "started" not in st.session_state:
     st.session_state.started = False
 if "show_modal" not in st.session_state:
@@ -304,21 +334,22 @@ with st.sidebar:
             )
 
 # ================================
-# 입력부: (시간)(분) 쌍 – 동일 너비
+# 입력부: (시간)(분) 쌍 – 동일 너비, 메이저/마이너 툴팁
 # ================================
 st.markdown("### 이용 패턴 입력")
 
-def time_pair_in_columns(col_h, col_m, title: str, key: str, max_h: int = 72) -> float:
+def time_pair_in_columns(col_h, col_m, title: str, key: str, max_h: int = 72, help_text: str | None = None) -> float:
     with col_h:
-        hh = st.number_input(f"{title} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
+        hh = st.number_input(f"{title} (시간)", min_value=0, max_value=max_h, value=0, step=1,
+                             key=f"{key}_h", help=help_text)
     with col_m:
         mm = st.number_input("(분)", min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
     return float(hh) + float(mm)/60.0
 
-# 1행: Major OTT | Minor OTT
+# 1행: Major OTT | Minor OTT  (각 라벨에 예시 툴팁)
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-major_ott = time_pair_in_columns(r1c1, r1c2, "Major OTT", "major")
-minor_ott = time_pair_in_columns(r1c3, r1c4, "Minor OTT", "minor")
+major_ott = time_pair_in_columns(r1c1, r1c2, "Major OTT", "major", help_text=MAJOR_HELP)
+minor_ott = time_pair_in_columns(r1c3, r1c4, "Minor OTT", "minor", help_text=MINOR_HELP)
 
 # 2행: YouTube | 스포츠
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
@@ -419,7 +450,6 @@ if st.button("예측 실행", type="primary"):
 
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
     raw_pred = model.predict(Xrow.to_numpy())[0]
-
     pred_label = resolve_to_mbti(raw_pred, st.session_state.cluster_to_type)
 
     prob_df = None
@@ -435,7 +465,7 @@ if st.button("예측 실행", type="primary"):
     st.session_state.result_label = pred_label
     st.session_state.result_probs = prob_df
     st.session_state.show_modal = True
-    st.session_state.modal_token += 1  # << 이번 실행 토큰 갱신
+    st.session_state.modal_token += 1  # 이번 실행 토큰 갱신
 
 # 토큰 방식: 같은 토큰에서는 1번만 모달 표시
 if st.session_state.show_modal:
@@ -443,6 +473,7 @@ if st.session_state.show_modal:
     if st.session_state.modal_last_shown != token:
         show_result_dialog()
         st.session_state.modal_last_shown = token
+
 
 
 
