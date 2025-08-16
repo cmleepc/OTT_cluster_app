@@ -17,7 +17,7 @@ SECOND_CSV  = APP_DIR / "second.csv"
 MODEL_PKL   = APP_DIR / "model.pkl"
 
 # ================================
-# OTT 그룹 설명 (툴팁에 사용)
+# OTT 그룹 설명 (팝오버)
 # ================================
 MAJOR_APPS = [
     "Disney+ (디즈니+)",
@@ -37,8 +37,8 @@ MINOR_APPS = [
     "MBC",
     "네이버 시리즈온 (SERIES ON)",
 ]
-MAJOR_HELP = "메이저 OTT 예시:\n- " + "\n- ".join(MAJOR_APPS)
-MINOR_HELP = "마이너 OTT 예시:\n- " + "\n- ".join(MINOR_APPS)
+MAJOR_HELP = "메이저 OTT 종류:\n- " + "\n- ".join(MAJOR_APPS)
+MINOR_HELP = "마이너 OTT 종류:\n- " + "\n- ".join(MINOR_APPS)
 
 # ================================
 # Genre map
@@ -72,6 +72,7 @@ ALIAS_TO_TYPE = {
 }
 DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
 
+# MBTI 4축 설명
 DIM_DESC = {
     "E": "외향(E): OTT 사용량이 많고 다양한 앱을 적극적으로 활용합니다.",
     "I": "내향(I): OTT 사용량이 적고 혼자 보는 선택적·조용한 이용을 선호합니다.",
@@ -82,11 +83,13 @@ DIM_DESC = {
     "J": "판단(J): 자기관리와 계획을 세워 시청 패턴을 꾸준히 유지합니다.",
     "P": "인식(P): 자유·즉흥적으로 상황에 따라 유연하게 시청합니다.",
 }
+
+# 한 줄 강조(‘요약’/‘조합’ 제거, 자연스러운 문장)
 SUMMARY_LINE = {
-    "ESFJ": "외향(E)+감각(S)+감정(F)+계획형(J) 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
-    "ESTJ": "외향(E)+감각(S)+사고(T)+계획형(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
-    "INTP": "내향(I)+직관(N)+사고(T)+인식형(P) 조합으로, 적은 양을 선택·집중해 깊게 파는 탐구형 사용자입니다.",
-    "INFP": "내향(I)+직관(N)+감정(F)+인식형(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
+    "ESFJ": "많이 보고 자주 즐기지만 사용 습관은 정돈되어 있어요.",
+    "ESTJ": "목적과 효율을 중시하며 계획적으로 시청하는 편입니다.",
+    "INTP": "필요한 콘텐츠만 골라 깊게 파고드는 탐구형 시청 성향입니다.",
+    "INFP": "감정 이입과 휴식을 위해 자유롭게 시청하는 편입니다.",
 }
 
 # ---------- 공통 유틸 ----------
@@ -120,18 +123,14 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
     집계합으로 정규화(합계 1.0)하여 반환.
     """
     label_probs: Dict[str, float] = {"ESFJ":0.0, "ESTJ":0.0, "INTP":0.0, "INFP":0.0}
-
     for c, p in zip(classes, probs):
         mapped = resolve_to_mbti(c, cluster_map)
         if mapped in label_probs:
             label_probs[mapped] += float(p)
-        # 매핑되지 않는 클래스는 무시(= 집계합에서 자동 제외)
-
     total = sum(label_probs.values())
     if total > 0:
         for k in label_probs:
             label_probs[k] /= total
-
     dfp = pd.DataFrame({"class": list(label_probs.keys()), "prob": list(label_probs.values())})
     return dfp.sort_values("prob", ascending=False)
 
@@ -143,13 +142,13 @@ def render_combined_profile(label: str):
     st.markdown(
         f"""
         <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin:8px 0;">
-          <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">
+          <div style="font-size:1.1rem;font-weight:800;margin-bottom:6px;">
             {mbti} {f"({alias})" if alias else ""}
           </div>
           <ul style="margin:0 0 0 1.1rem;">
             {''.join(f'<li style="margin:2px 0;">{b}</li>' for b in bullets)}
           </ul>
-          <div style="margin-top:8px;"><b>요약:</b> {summary}</div>
+          <div style="margin-top:10px;font-weight:700;">{summary}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -268,7 +267,7 @@ def build_manual_row(
 # ================================
 # UI
 # ================================
-st.set_page_config(page_title="OTT 이용자 군집 예측", layout="wide")
+st.set_page_config(page_title="OTT 성향 예측 및 페르소나 분류 시스템", layout="wide")
 
 # session state
 if "started" not in st.session_state:
@@ -287,7 +286,8 @@ if not st.session_state.started:
         <style>
         .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; text-align:center; }
         .cover-inner h1 { font-size:3rem; margin-bottom:.25rem; }
-        .cover-inner p  { font-size:1.05rem; color:#555; margin-bottom:1rem; }
+        .cover-inner p  { font-size:1.05rem; color:#555; margin-bottom:.5rem; }
+        .team { margin-top:.25rem; color:#777; font-weight:600; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -296,8 +296,9 @@ if not st.session_state.started:
         """
         <div class="cover-wrap">
           <div class="cover-inner">
-            <h1>📺 OTT 이용자 군집 예측</h1>
-            <p>이용 패턴과 선호 장르를 입력하면 군집을 예측합니다.</p>
+            <h1>📺 OTT 성향 예측 및 페르소나 분류 시스템</h1>
+            <p>OTT를 포함한 주요 앱 사용 패턴과 선호 콘텐츠 장르를 입력해주세요!</p>
+            <div class="team">팀: 탈전공지대</div>
           </div>
         </div>
         """,
@@ -310,7 +311,7 @@ if not st.session_state.started:
             st.rerun()
     st.stop()
 
-st.title("📺 OTT 이용자 군집 예측")
+st.title("📺 OTT 성향 예측 및 페르소나 분류 시스템")
 
 with st.sidebar:
     st.header("설정")
@@ -334,27 +335,38 @@ with st.sidebar:
             )
 
 # ================================
-# 입력부: (시간)(분) 쌍 – 동일 너비, 메이저/마이너 툴팁
+# 입력부: (시간)(분) 쌍 – 동일 너비 + 팝오버
 # ================================
-st.markdown("### 이용 패턴 입력")
+st.markdown("### 앱 이용 패턴 입력")
 
-def time_pair_in_columns(col_h, col_m, title: str, key: str, max_h: int = 72, help_text: str | None = None) -> float:
+def time_pair_with_popover(col_h, col_m, title: str, key: str, help_text: str | None = None,
+                           max_h: int = 72) -> float:
+    # 라벨 행: 텍스트 + ⓘ 팝오버(아래로 펼침)
     with col_h:
-        hh = st.number_input(f"{title} (시간)", min_value=0, max_value=max_h, value=0, step=1,
-                             key=f"{key}_h", help=help_text)
+        lc1, lc2 = st.columns([10,1])
+        with lc1:
+            st.markdown(f"**{title} (시간)**")
+        with lc2:
+            if help_text:
+                with st.popover("ⓘ"):
+                    st.markdown(help_text)
+        hh = st.number_input("", min_value=0, max_value=max_h, value=0, step=1,
+                             key=f"{key}_h", label_visibility="collapsed")
     with col_m:
-        mm = st.number_input("(분)", min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
+        st.markdown("**(분)**")
+        mm = st.number_input("", min_value=0, max_value=59, value=0, step=5,
+                             key=f"{key}_m", label_visibility="collapsed")
     return float(hh) + float(mm)/60.0
 
-# 1행: Major OTT | Minor OTT  (각 라벨에 예시 툴팁)
+# 1행: Major OTT | Minor OTT
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-major_ott = time_pair_in_columns(r1c1, r1c2, "Major OTT", "major", help_text=MAJOR_HELP)
-minor_ott = time_pair_in_columns(r1c3, r1c4, "Minor OTT", "minor", help_text=MINOR_HELP)
+major_ott = time_pair_with_popover(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
+minor_ott = time_pair_with_popover(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
 
 # 2행: YouTube | 스포츠
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-youtube = time_pair_in_columns(r2c1, r2c2, "YouTube", "yt")
-sports  = time_pair_in_columns(r2c3, r2c4, "스포츠", "sports")
+youtube = time_pair_with_popover(r2c1, r2c2, "YouTube", "yt")
+sports  = time_pair_with_popover(r2c3, r2c4, "스포츠", "sports")
 
 # 3행: 쇼핑 / 사용 OTT 수
 r3c1, r3c2 = st.columns(2)
@@ -366,7 +378,7 @@ with r3c2:
                                  help="동시에 사용하는 OTT 서비스 개수")
 
 # ================================
-# TV 장르(X1~X3) + 동영상 장르 체크
+# 선호 장르
 # ================================
 st.markdown("### 선호 TV 장르 선택")
 colx1, colx2, colx3 = st.columns(3)
@@ -392,7 +404,15 @@ for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
 # 결과 모달(dialog)
 # ================================
 def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
-    st.success(f"예측 군집: **{pred_label}**")
+    # 큰 타이틀(예측 군집: 제거)
+    st.markdown(
+        f"""
+        <div style="background:#eaf7ee;border-radius:10px;padding:14px 16px;margin:0 0 12px 0;">
+          <span style="font-size:1.6rem;font-weight:800;">{pred_label}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     render_combined_profile(pred_label)
     if prob_df is not None and not prob_df.empty:
         st.markdown("---")
