@@ -66,7 +66,7 @@ SUMMARY_LINE = {
     "INFP": "내향(I)+직관(N)+감정(F)+인식형(P) 조합으로, 감정 이입과 휴식을 위해 자유롭게 시청하는 사용자입니다.",
 }
 
-# ---------- 도우미 ----------
+# ---------- 공통 유틸 ----------
 def _norm_str(s: str) -> str:
     return "".join(ch for ch in str(s).upper() if ch.isalnum())
 
@@ -120,21 +120,31 @@ def render_combined_profile(label: str):
         unsafe_allow_html=True,
     )
 
+# ---- 막대 라벨: 낮은 막대는 바깥(검정), 높은 막대는 안쪽(흰색) ----
 def plot_probs_with_labels(prob_df: pd.DataFrame):
     if prob_df is None or prob_df.empty:
         return
     labels = prob_df["class"].tolist()
-    vals = prob_df["prob"].tolist()
-    perc = [v * 100 for v in vals]
+    vals   = prob_df["prob"].tolist()
+    perc   = [v * 100 for v in vals]
+
     fig, ax = plt.subplots(figsize=(7, 3.6))
     bars = ax.bar(labels, vals)
-    ax.set_ylim(0, 1.0)
+    ax.set_ylim(0, 1.05)
     ax.set_ylabel("Probability")
+
+    INSIDE_TH = 0.12
     for i, b in enumerate(bars):
         h = b.get_height()
         txt = f"{perc[i]:.1f}%"
-        ax.text(b.get_x() + b.get_width()/2, h - 0.03, txt,
-                ha="center", va="top", color="white", fontweight="bold", fontsize=11)
+        if h >= INSIDE_TH:
+            y = max(h - 0.03, 0.02)
+            ax.text(b.get_x() + b.get_width()/2, y, txt,
+                    ha="center", va="top", color="white", fontweight="bold", fontsize=11)
+        else:
+            y = min(h + 0.03, 1.02)
+            ax.text(b.get_x() + b.get_width()/2, y, txt,
+                    ha="center", va="bottom", color="black", fontweight="bold", fontsize=11)
     st.pyplot(fig, clear_figure=True)
 
 # ================================
@@ -204,7 +214,7 @@ def load_or_train_model(feature_cols: List[str]):
     return model
 
 # ================================
-# Utilities for input row
+# 입력행 생성 유틸
 # ================================
 def empty_feature_row(feature_cols: List[str]) -> pd.DataFrame:
     return pd.DataFrame([np.zeros(len(feature_cols), dtype=float)], columns=feature_cols)
@@ -233,7 +243,14 @@ st.set_page_config(page_title="OTT 이용자 군집 예측", layout="wide")
 
 if "started" not in st.session_state:
     st.session_state.started = False
+if "show_modal" not in st.session_state:
+    st.session_state.show_modal = False
+if "modal_token" not in st.session_state:
+    st.session_state.modal_token = 0
+if "modal_last_shown" not in st.session_state:
+    st.session_state.modal_last_shown = -1
 
+# ---- 커버 ----
 if not st.session_state.started:
     st.markdown(
         """
@@ -287,48 +304,38 @@ with st.sidebar:
             )
 
 # ================================
-# 입력 위젯: 시·분 숫자입력만 사용
+# 입력부: (시간)(분) 쌍 – 동일 너비
 # ================================
 st.markdown("### 이용 패턴 입력")
 
-def time_input_numeric(label: str, key: str, max_h: int = 72) -> float:
-    c_h, c_m = st.columns([2,1])
-    with c_h:
-        hh = st.number_input(f"{label} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
-    with c_m:
-        mm = st.number_input(f"{label} (분)",   min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
+def time_pair_in_columns(col_h, col_m, title: str, key: str, max_h: int = 72) -> float:
+    with col_h:
+        hh = st.number_input(f"{title} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
+    with col_m:
+        mm = st.number_input("(분)", min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
     return float(hh) + float(mm)/60.0
 
-# 1행: Major OTT / Minor OTT
-r1c1, r1c2 = st.columns(2)
-with r1c1:
-    major_ott = time_input_numeric("Major OTT", key="major")
-with r1c2:
-    minor_ott = time_input_numeric("Minor OTT", key="minor")
+# 1행: Major OTT | Minor OTT
+r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+major_ott = time_pair_in_columns(r1c1, r1c2, "Major OTT", "major")
+minor_ott = time_pair_in_columns(r1c3, r1c4, "Minor OTT", "minor")
 
-# 2행: YouTube / 스포츠
-r2c1, r2c2 = st.columns(2)
-with r2c1:
-    youtube = time_input_numeric("YouTube", key="yt")
-with r2c2:
-    sports  = time_input_numeric("스포츠", key="sports")
+# 2행: YouTube | 스포츠
+r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+youtube = time_pair_in_columns(r2c1, r2c2, "YouTube", "yt")
+sports  = time_pair_in_columns(r2c3, r2c4, "스포츠", "sports")
 
 # 3행: 쇼핑 / 사용 OTT 수
 r3c1, r3c2 = st.columns(2)
 with r3c1:
-    shopping = st.number_input(
-        "쇼핑 (주당 이용 횟수, 회)",
-        min_value=0, max_value=70, value=0, step=1, format="%d", key="shop"
-    )
+    shopping = st.number_input("쇼핑 (주당 이용 횟수, 회)",
+                               min_value=0, max_value=70, value=0, step=1, format="%d", key="shop")
 with r3c2:
-    media_ott_val = st.selectbox(
-        "사용 OTT 수 (개)",
-        options=list(range(0, 11)), index=0,
-        help="동시에 사용하는 OTT 서비스 개수"
-    )
+    media_ott_val = st.selectbox("사용 OTT 수 (개)", options=list(range(0, 11)), index=0,
+                                 help="동시에 사용하는 OTT 서비스 개수")
 
 # ================================
-# TV 장르(X1,X2,X3) + 동영상 장르 체크
+# TV 장르(X1~X3) + 동영상 장르 체크
 # ================================
 st.markdown("### 선호 TV 장르 선택")
 colx1, colx2, colx3 = st.columns(3)
@@ -347,7 +354,8 @@ cols = st.columns(3)
 for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
     label = X_LABELS.get(colname, colname)
     with cols[i % 3]:
-        onoff_selections[colname] = st.checkbox(label, value=False)
+        val = st.checkbox(label, value=False, key=f"on_{colname}")
+        onoff_selections[colname] = val
 
 # ================================
 # 결과 모달(dialog)
@@ -368,6 +376,10 @@ if HAS_DIALOG:
         pred_label = st.session_state.get("result_label")
         prob_df = st.session_state.get("result_probs")
         _result_body(pred_label, prob_df)
+        st.divider()
+        if st.button("닫기", use_container_width=True):
+            st.session_state.show_modal = False
+            st.rerun()
 else:
     def show_result_dialog():
         st.markdown("""
@@ -390,9 +402,6 @@ else:
 # ================================
 # 예측 실행
 # ================================
-if "show_modal" not in st.session_state:
-    st.session_state.show_modal = False
-
 if st.button("예측 실행", type="primary"):
     base_nums = {
         "Major OTT": major_ott,
@@ -400,7 +409,7 @@ if st.button("예측 실행", type="primary"):
         "YouTube": youtube,
         "스포츠": sports,
         "쇼핑": float(shopping),
-        "미디어_OTT": float(media_ott_val),  # 내부 컬럼명은 그대로 유지
+        "미디어_OTT": float(media_ott_val),   # 내부 컬럼명은 기존 유지
     }
     x123_vals = {
         "X1": GENRE_LABEL_TO_CODE.get(x1_label),
@@ -410,6 +419,7 @@ if st.button("예측 실행", type="primary"):
 
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
     raw_pred = model.predict(Xrow.to_numpy())[0]
+
     pred_label = resolve_to_mbti(raw_pred, st.session_state.cluster_to_type)
 
     prob_df = None
@@ -425,10 +435,15 @@ if st.button("예측 실행", type="primary"):
     st.session_state.result_label = pred_label
     st.session_state.result_probs = prob_df
     st.session_state.show_modal = True
-    st.rerun()
+    st.session_state.modal_token += 1  # << 이번 실행 토큰 갱신
 
+# 토큰 방식: 같은 토큰에서는 1번만 모달 표시
 if st.session_state.show_modal:
-    show_result_dialog()
+    token = st.session_state.modal_token
+    if st.session_state.modal_last_shown != token:
+        show_result_dialog()
+        st.session_state.modal_last_shown = token
+
 
 
 
