@@ -38,30 +38,17 @@ GENRE_LABEL_TO_CODE = {v: k for k, v in GENRE_MAP.items()}
 # ================================
 # MBTI 별칭/설명/매핑
 # ================================
-TYPE_ALIAS = {
-    "ESFJ": "ENGAGED",
-    "ESTJ": "PLANNED",
-    "INTP": "TARGETED",
-    "INFP": "JOYFUL",
-}
+TYPE_ALIAS = {"ESFJ": "ENGAGED", "ESTJ": "PLANNED", "INTP": "TARGETED", "INFP": "JOYFUL"}
 
-# 8개 키워드/철자 변형 → 4MBTI 강제 매핑
 ALIAS_TO_TYPE = {
-    "ENGAGED": "ESFJ",
-    "STIMULATING": "ESFJ",
-    "FRAGMENTED": "ESFJ",
-    "PLANNED": "ESTJ",
-    "NECESSITYFOCUSED": "ESTJ",
-    "NECCESITYFOCUSED": "ESTJ",
+    "ENGAGED": "ESFJ", "STIMULATING": "ESFJ", "FRAGMENTED": "ESFJ",
+    "PLANNED": "ESTJ", "NECESSITYFOCUSED": "ESTJ", "NECCESITYFOCUSED": "ESTJ",
     "TARGETED": "INTP",
-    "JOYFUL": "INFP",
-    "IDLE": "INFP",
-    # MBTI 자체가 나와도 허용
+    "JOYFUL": "INFP", "IDLE": "INFP",
     "ESFJ": "ESFJ", "ESTJ": "ESTJ", "INTP": "INTP", "INFP": "INFP",
 }
 DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
 
-# MBTI 4축 설명
 DIM_DESC = {
     "E": "외향(E): OTT 사용량이 많고 다양한 앱을 적극적으로 활용합니다.",
     "I": "내향(I): OTT 사용량이 적고 혼자 보는 선택적·조용한 이용을 선호합니다.",
@@ -72,7 +59,6 @@ DIM_DESC = {
     "J": "판단(J): 자기관리와 계획을 세워 시청 패턴을 꾸준히 유지합니다.",
     "P": "인식(P): 자유·즉흥적으로 상황에 따라 유연하게 시청합니다.",
 }
-
 SUMMARY_LINE = {
     "ESFJ": "외향(E)+감각(S)+감정(F)+계획형(J) 조합으로, 많이 즐기되 질서 있게 사용하는 타입입니다.",
     "ESTJ": "외향(E)+감각(S)+사고(T)+계획형(J) 조합으로, 목적과 효율 중심의 체계적 사용자입니다.",
@@ -93,7 +79,6 @@ def mbti_letters(label: str) -> str:
     return s
 
 def resolve_to_mbti(raw_pred, cluster_map: Dict[int, str]) -> str:
-    """모델 예측을 ESFJ/ESTJ/INTP/INFP로 강제 변환."""
     if isinstance(raw_pred, (np.generic,)): raw_pred = raw_pred.item()
     if isinstance(raw_pred, str):
         key = _norm_str(raw_pred)
@@ -116,12 +101,10 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
     return dfp.sort_values("prob", ascending=False)
 
 def render_combined_profile(label: str):
-    """MBTI(별칭) + 4축 설명을 하나의 카드로 묶어 출력."""
     mbti = mbti_letters(label)
     alias = TYPE_ALIAS.get(mbti, "")
     bullets = [DIM_DESC[ch] for ch in mbti if ch in DIM_DESC]
     summary = SUMMARY_LINE.get(mbti, "")
-
     st.markdown(
         f"""
         <div style="border:1px solid #eee;border-radius:14px;padding:16px 18px;margin:8px 0;">
@@ -138,13 +121,11 @@ def render_combined_profile(label: str):
     )
 
 def plot_probs_with_labels(prob_df: pd.DataFrame):
-    """막대 내부에 흰색 볼드 퍼센트 라벨 표시."""
     if prob_df is None or prob_df.empty:
         return
     labels = prob_df["class"].tolist()
     vals = prob_df["prob"].tolist()
     perc = [v * 100 for v in vals]
-
     fig, ax = plt.subplots(figsize=(7, 3.6))
     bars = ax.bar(labels, vals)
     ax.set_ylim(0, 1.0)
@@ -186,15 +167,12 @@ def prepare_training_schema() -> Tuple[List[str], Dict[str, str]]:
     df1_raw, df2_raw = load_raw()
     allowed_ids = set(df1_raw['panel_id'].astype(str))
     df2 = df2_raw[df2_raw.iloc[:, 0].astype(str).isin(allowed_ids)].reset_index(drop=True)
-
     x_label_map = build_human_label_map(df2_raw)
-
     df2 = _rename_second_like_training(df2)
     for cat in ["X1", "X2", "X3"]:
         if cat in df2.columns:
             df2[cat] = pd.to_numeric(df2[cat], errors="coerce")
     df2 = pd.get_dummies(df2, columns=["X1", "X2", "X3"], drop_first=True, dtype=int)
-
     merged = pd.merge(df1_raw, df2, on="panel_id", how="inner")
     feature_cols = [c for c in merged.columns if c not in ["panel_id", "cluster"]]
     return feature_cols, x_label_map
@@ -254,7 +232,6 @@ def build_manual_row(
 # ================================
 st.set_page_config(page_title="OTT 이용자 군집 예측", layout="wide")
 
-# ---- Cover page (centered) ----
 if "started" not in st.session_state:
     st.session_state.started = False
 
@@ -262,12 +239,9 @@ if not st.session_state.started:
     st.markdown(
         """
         <style>
-        .cover-wrap {
-            height: 45vh; /* 더 위로 */
-            display: flex; align-items: center; justify-content: center; text-align: center;
-        }
-        .cover-inner h1 { font-size: 3rem; margin-bottom: .25rem; }
-        .cover-inner p  { font-size: 1.05rem; color: #555; margin-bottom: 1rem; }
+        .cover-wrap { height: 45vh; display:flex; align-items:center; justify-content:center; text-align:center; }
+        .cover-inner h1 { font-size:3rem; margin-bottom:.25rem; }
+        .cover-inner p  { font-size:1.05rem; color:#555; margin-bottom:1rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -283,7 +257,6 @@ if not st.session_state.started:
         """,
         unsafe_allow_html=True,
     )
-    # 버튼을 더 위쪽에 보이도록 커버를 줄이고 바로 배치
     start_col = st.columns([1,1,1])[1]
     with start_col:
         if st.button("시작하기", type="primary", use_container_width=True):
@@ -291,7 +264,6 @@ if not st.session_state.started:
             st.rerun()
     st.stop()
 
-# ---- Prediction page ----
 st.title("📺 OTT 이용자 군집 예측")
 
 with st.sidebar:
@@ -300,7 +272,6 @@ with st.sidebar:
     model = load_or_train_model(FEATURE_COLS)
     st.success("스키마 & 모델 준비 완료 ✅")
 
-    # 숫자 라벨 매핑(필요 시 조정)
     if "cluster_to_type" not in st.session_state:
         st.session_state.cluster_to_type = DEFAULT_CLUSTER_TO_TYPE.copy()
 
@@ -317,13 +288,30 @@ with st.sidebar:
             )
 
 # ================================
-# 입력 위젯(시간/횟수 분리)
+# 입력 위젯(시간=주당 시청시간 / 빈도=주당 이용 횟수)
 # ================================
-def time_hours_widget(label: str, key: str, minute_mode: bool, max_h: int = 70) -> float:
-    if not minute_mode:
-        return st.slider(label, min_value=0.0, max_value=float(max_h),
-                         value=0.0, step=0.25, key=key,
-                         help="15분=0.25h, 30분=0.5h, 1시간=1.0h")
+st.markdown("### 이용 패턴 입력")
+
+entry_mode = st.radio(
+    "입력 방식 선택",
+    options=["슬라이더(15분 단위)", "시·분 숫자입력"],
+    index=0,
+    horizontal=True,
+    help="Major/Minor/YouTube/스포츠는 ‘주당 시청시간’, 쇼핑은 ‘주당 이용 횟수’를 입력합니다."
+)
+
+def time_input(label: str, key: str, max_h: int = 72) -> float:
+    """
+    주당 시청시간 입력. 반환: 시간(float)
+    - 슬라이더: 0.25h 스텝(=15분)
+    - 숫자: 시/분 분리, 분은 0~59 (내부적으로 시 + 분/60 변환)
+    """
+    if entry_mode == "슬라이더(15분 단위)":
+        return st.slider(
+            f"{label} (주당 시청시간, 시간)",
+            min_value=0.0, max_value=float(max_h), value=0.0, step=0.25, key=key,
+            help="예: 1시간 30분은 1.5로 입력됩니다. (슬라이더는 0.25h=15분 단위)"
+        )
     else:
         c_h, c_m = st.columns([2,1])
         with c_h:
@@ -332,25 +320,29 @@ def time_hours_widget(label: str, key: str, minute_mode: bool, max_h: int = 70) 
             mm = st.number_input(f"{label} (분)",   min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
         return float(hh) + float(mm)/60.0
 
-def count_per_week_widget(label: str, key: str, max_cnt: int = 70) -> int:
-    return st.number_input(label, min_value=0, max_value=max_cnt, value=0, step=1, format="%d", key=key)
-
-st.markdown("### 이용 패턴 입력")
-minute_mode = st.toggle("시/분으로 입력할래요? (끄면 15분 단위 슬라이더)", value=False)
+def freq_input(label: str, key: str, max_cnt: int = 70) -> int:
+    return st.number_input(
+        f"{label} (주당 이용 횟수, 회)",
+        min_value=0, max_value=max_cnt, value=0, step=1, format="%d", key=key,
+        help="예: 일주일에 3번이면 3을 입력"
+    )
 
 c1, c2, c3 = st.columns(3)
 with c1:
-    major_ott = time_hours_widget("Major OTT (주당 시청시간, 시간)", key="major", minute_mode=minute_mode)
-    youtube   = time_hours_widget("YouTube (주당 시청시간, 시간)",   key="yt",    minute_mode=minute_mode)
+    major_ott = time_input("Major OTT", key="major")
+    youtube   = time_input("YouTube",   key="yt")
 with c2:
-    minor_ott = time_hours_widget("Minor OTT (주당 시청시간, 시간)", key="minor", minute_mode=minute_mode)
-    shopping  = count_per_week_widget("쇼핑 (주당 이용 횟수, 회)",     key="shop")
+    minor_ott = time_input("Minor OTT", key="minor")
+    shopping  = freq_input("쇼핑",      key="shop")
 with c3:
-    sports    = time_hours_widget("스포츠 (주당 시청시간, 시간)",     key="sports", minute_mode=minute_mode)
-    media_ott_val = st.selectbox("미디어_OTT (사용 OTT 수)", options=list(range(0, 11)), index=0,
-                                 help="동시에 사용하는 OTT 서비스의 개수")
+    sports    = time_input("스포츠",    key="sports")
+    media_ott_val = st.selectbox(
+        "미디어_OTT (사용 OTT 수, 개)",
+        options=list(range(0, 11)), index=0,
+        help="동시에 사용하는 OTT 서비스 개수 (0~10)"
+    )
 
-st.caption("※ 시청시간은 '시간' 단위로 모델에 들어갑니다. (예: 1시간 30분 → 1.5시간)")
+st.caption("※ 시청시간은 모델에 ‘시간’ 단위(예: 1시간 30분 → 1.5시간)로 들어갑니다.")
 
 # ================================
 # TV 장르(X1,X2,X3) + 동영상 장르 체크
@@ -397,11 +389,10 @@ else:
     def show_result_dialog():
         st.markdown("""
         <style>
-        .overlay { position:fixed; top:0; left:0; width:100%; height:100%;
-                   background: rgba(0,0,0,.35); z-index: 1000; }
+        .overlay { position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,.35); z-index:1000; }
         .modal { position:fixed; top: 8vh; left:50%; transform:translateX(-50%);
-                 width:min(860px,94vw); background:#fff; border-radius:14px;
-                 box-shadow:0 10px 30px rgba(0,0,0,.2); padding:18px 20px; z-index:1001; }
+                 width:min(860px,94vw); background:#fff; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.2);
+                 padding:18px 20px; z-index:1001; }
         </style>
         """, unsafe_allow_html=True)
         st.markdown('<div class="overlay"></div><div class="modal">', unsafe_allow_html=True)
@@ -425,8 +416,8 @@ if st.button("예측 실행", type="primary"):
         "Minor OTT": minor_ott,
         "YouTube": youtube,
         "스포츠": sports,
-        "쇼핑": float(shopping),
-        "미디어_OTT": float(media_ott_val),
+        "쇼핑": float(shopping),           # 주당 ‘횟수’
+        "미디어_OTT": float(media_ott_val) # 사용 OTT 개수
     }
     x123_vals = {
         "X1": GENRE_LABEL_TO_CODE.get(x1_label),
@@ -436,11 +427,8 @@ if st.button("예측 실행", type="primary"):
 
     Xrow = build_manual_row(FEATURE_COLS, base_nums, x123_vals, onoff_selections)
     raw_pred = model.predict(Xrow.to_numpy())[0]
-
-    # MBTI 라벨로 강제 변환
     pred_label = resolve_to_mbti(raw_pred, st.session_state.cluster_to_type)
 
-    # 확률 집계
     prob_df = None
     if hasattr(model, "predict_proba"):
         try:
@@ -451,7 +439,6 @@ if st.button("예측 실행", type="primary"):
         except Exception:
             pass
 
-    # 모달 표시
     st.session_state.result_label = pred_label
     st.session_state.result_probs = prob_df
     st.session_state.show_modal = True
@@ -459,6 +446,7 @@ if st.button("예측 실행", type="primary"):
 
 if st.session_state.show_modal:
     show_result_dialog()
+
 
 
 
