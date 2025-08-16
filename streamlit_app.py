@@ -190,7 +190,6 @@ def load_or_train_model(feature_cols: List[str]):
         from sklearn.ensemble import RandomForestClassifier
         df1_raw, df2_raw = load_raw()
         allowed_ids = set(df1_raw['panel_id'].astype(str))
-        df2 = df2_raw[df2_raw.iloc[:, 0].astype(str).isin(allowed_ids)].reset_index(drop=True)
         df2 = _rename_second_like_training(df2)
         for cat in ["X1", "X2", "X3"]:
             if cat in df2.columns:
@@ -288,66 +287,50 @@ with st.sidebar:
             )
 
 # ================================
-# 입력 위젯(시간=주당 시청시간 / 빈도=주당 이용 횟수)
+# 입력 위젯: 시·분 숫자입력만 사용
 # ================================
 st.markdown("### 이용 패턴 입력")
 
-entry_mode = st.radio(
-    "입력 방식 선택",
-    options=["슬라이더(15분 단위)", "시·분 숫자입력"],
-    index=0,
-    horizontal=True,
-    help="Major/Minor/YouTube/스포츠는 ‘주당 시청시간’, 쇼핑은 ‘주당 이용 횟수’를 입력합니다."
-)
+def time_input_numeric(label: str, key: str, max_h: int = 72) -> float:
+    c_h, c_m = st.columns([2,1])
+    with c_h:
+        hh = st.number_input(f"{label} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
+    with c_m:
+        mm = st.number_input(f"{label} (분)",   min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
+    return float(hh) + float(mm)/60.0
 
-def time_input(label: str, key: str, max_h: int = 72) -> float:
-    """
-    주당 시청시간 입력. 반환: 시간(float)
-    - 슬라이더: 0.25h 스텝(=15분)
-    - 숫자: 시/분 분리, 분은 0~59 (내부적으로 시 + 분/60 변환)
-    """
-    if entry_mode == "슬라이더(15분 단위)":
-        return st.slider(
-            f"{label} (주당 시청시간, 시간)",
-            min_value=0.0, max_value=float(max_h), value=0.0, step=0.25, key=key,
-            help="예: 1시간 30분은 1.5로 입력됩니다. (슬라이더는 0.25h=15분 단위)"
-        )
-    else:
-        c_h, c_m = st.columns([2,1])
-        with c_h:
-            hh = st.number_input(f"{label} (시간)", min_value=0, max_value=max_h, value=0, step=1, key=f"{key}_h")
-        with c_m:
-            mm = st.number_input(f"{label} (분)",   min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
-        return float(hh) + float(mm)/60.0
+# 1행: Major OTT / Minor OTT
+r1c1, r1c2 = st.columns(2)
+with r1c1:
+    major_ott = time_input_numeric("Major OTT", key="major")
+with r1c2:
+    minor_ott = time_input_numeric("Minor OTT", key="minor")
 
-def freq_input(label: str, key: str, max_cnt: int = 70) -> int:
-    return st.number_input(
-        f"{label} (주당 이용 횟수, 회)",
-        min_value=0, max_value=max_cnt, value=0, step=1, format="%d", key=key,
-        help="예: 일주일에 3번이면 3을 입력"
+# 2행: YouTube / 스포츠
+r2c1, r2c2 = st.columns(2)
+with r2c1:
+    youtube = time_input_numeric("YouTube", key="yt")
+with r2c2:
+    sports  = time_input_numeric("스포츠", key="sports")
+
+# 3행: 쇼핑 / 사용 OTT 수
+r3c1, r3c2 = st.columns(2)
+with r3c1:
+    shopping = st.number_input(
+        "쇼핑 (주당 이용 횟수, 회)",
+        min_value=0, max_value=70, value=0, step=1, format="%d", key="shop"
     )
-
-c1, c2, c3 = st.columns(3)
-with c1:
-    major_ott = time_input("Major OTT", key="major")
-    youtube   = time_input("YouTube",   key="yt")
-with c2:
-    minor_ott = time_input("Minor OTT", key="minor")
-    shopping  = freq_input("쇼핑",      key="shop")
-with c3:
-    sports    = time_input("스포츠",    key="sports")
+with r3c2:
     media_ott_val = st.selectbox(
-        "미디어_OTT (사용 OTT 수, 개)",
+        "사용 OTT 수 (개)",
         options=list(range(0, 11)), index=0,
-        help="동시에 사용하는 OTT 서비스 개수 (0~10)"
+        help="동시에 사용하는 OTT 서비스 개수"
     )
-
-st.caption("※ 시청시간은 모델에 ‘시간’ 단위(예: 1시간 30분 → 1.5시간)로 들어갑니다.")
 
 # ================================
 # TV 장르(X1,X2,X3) + 동영상 장르 체크
 # ================================
-st.markdown("### TV 장르 순위 선택 (X1, X2, X3)")
+st.markdown("### 선호 TV 장르 선택")
 colx1, colx2, colx3 = st.columns(3)
 genre_options = list(GENRE_MAP.values())
 with colx1:
@@ -357,7 +340,7 @@ with colx2:
 with colx3:
     x3_label = st.selectbox("3순위 장르", options=genre_options, index=0)
 
-st.markdown("### 동영상 콘텐츠 장르 (해당 시 체크)")
+st.markdown("### 선호 동영상 콘텐츠 장르 (중복체크)")
 x_onoff_cols = [c for c in FEATURE_COLS if c.startswith("X") and c[1:].isdigit() and int(c[1:]) >= 6]
 onoff_selections: Dict[str, int] = {}
 cols = st.columns(3)
@@ -416,8 +399,8 @@ if st.button("예측 실행", type="primary"):
         "Minor OTT": minor_ott,
         "YouTube": youtube,
         "스포츠": sports,
-        "쇼핑": float(shopping),           # 주당 ‘횟수’
-        "미디어_OTT": float(media_ott_val) # 사용 OTT 개수
+        "쇼핑": float(shopping),
+        "미디어_OTT": float(media_ott_val),  # 내부 컬럼명은 그대로 유지
     }
     x123_vals = {
         "X1": GENRE_LABEL_TO_CODE.get(x1_label),
@@ -446,6 +429,7 @@ if st.button("예측 실행", type="primary"):
 
 if st.session_state.show_modal:
     show_result_dialog()
+
 
 
 
