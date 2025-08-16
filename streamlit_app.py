@@ -17,7 +17,7 @@ SECOND_CSV  = APP_DIR / "second.csv"
 MODEL_PKL   = APP_DIR / "model.pkl"
 
 # ================================
-# OTT 그룹 안내 (팝오버 콘텐츠)
+# OTT 그룹 안내 (툴팁 텍스트)
 # ================================
 MAJOR_APPS = [
     "Disney+ (디즈니+)",
@@ -72,7 +72,6 @@ ALIAS_TO_TYPE = {
 }
 DEFAULT_CLUSTER_TO_TYPE = {0: "ESFJ", 1: "ESTJ", 2: "INTP", 3: "INFP"}
 
-# MBTI 4축 설명
 DIM_DESC = {
     "E": "외향(E): OTT 사용량이 많고 다양한 앱을 적극적으로 활용합니다.",
     "I": "내향(I): OTT 사용량이 적고 혼자 보는 선택적·조용한 이용을 선호합니다.",
@@ -83,8 +82,6 @@ DIM_DESC = {
     "J": "판단(J): 자기관리와 계획을 세워 시청 패턴을 꾸준히 유지합니다.",
     "P": "인식(P): 자유·즉흥적으로 상황에 따라 유연하게 시청합니다.",
 }
-
-# 한 줄 강조(자연스러운 문장)
 SUMMARY_LINE = {
     "ESFJ": "많이 보고 자주 즐기지만 사용 습관은 정돈되어 있어요.",
     "ESTJ": "목적과 효율을 중시하며 계획적으로 시청하는 편입니다.",
@@ -132,7 +129,6 @@ def aggregate_probs_by_type(classes, probs, cluster_map: Dict[int, str]) -> pd.D
     return dfp.sort_values("prob", ascending=False)
 
 def render_combined_profile(label: str):
-    """프로필 카드(요약 문구는 상단 라인에서 처리)."""
     mbti = mbti_letters(label)
     alias = TYPE_ALIAS.get(mbti, "")
     bullets = [DIM_DESC[ch] for ch in mbti if ch in DIM_DESC]
@@ -150,7 +146,6 @@ def render_combined_profile(label: str):
         unsafe_allow_html=True,
     )
 
-# ---- 확률 막대: 항상 막대 위(검정) ----
 def plot_probs_with_labels(prob_df: pd.DataFrame):
     if prob_df is None or prob_df.empty:
         return
@@ -177,7 +172,7 @@ def plot_probs_with_labels(prob_df: pd.DataFrame):
 @st.cache_data(show_spinner=False)
 def load_raw() -> Tuple[pd.DataFrame, pd.DataFrame]:
     df1 = pd.read_csv(FIRST_CSV)
-    df2 = pd.read_csv(SECOND_CSV)  # row0 has labels for X6+
+    df2 = pd.read_csv(SECOND_CSV)
     return df1, df2
 
 def _rename_second_like_training(df2: pd.DataFrame) -> pd.DataFrame:
@@ -275,7 +270,7 @@ if "modal_token" not in st.session_state:
 if "modal_last_shown" not in st.session_state:
     st.session_state.modal_last_shown = -1
 
-# ---- 커버 (가운데 정렬, 팀 문구 제거, 부제 강조) ----
+# ---- 커버(가운데 정렬, 부제 강조, 팀 문구 X) ----
 if not st.session_state.started:
     st.markdown(
         """
@@ -329,37 +324,29 @@ with st.sidebar:
             )
 
 # ================================
-# 입력부: (시간)(분) 쌍 – 동일 너비, 팝오버(아래로 펼침)
+# 입력부: (시간)(분) – 'help' 아이콘(동그란 물음표) 사용
 # ================================
 st.markdown("### 앱 이용 패턴 입력")
 
-def time_pair_with_popover(col_h, col_m, title: str, key: str, pop_text: str | None = None,
-                           max_h: int = 72) -> float:
+def time_pair_with_helpicon(col_h, col_m, title: str, key: str, help_text: str | None = None,
+                            max_h: int = 72) -> float:
+    # (시간) 입력에 help=...을 달아주면 라벨 오른쪽에 작은 동그란 물음표가 생깁니다.
     with col_h:
-        lc1, lc2 = st.columns([10,1])
-        with lc1:
-            st.markdown(f"**{title} (시간)**")
-        with lc2:
-            if pop_text:
-                with st.popover("❓"):
-                    st.markdown(pop_text)
-        hh = st.number_input("", min_value=0, max_value=max_h, value=0, step=1,
-                             key=f"{key}_h", label_visibility="collapsed")
+        hh = st.number_input(f"{title} (시간)", min_value=0, max_value=max_h, value=0, step=1,
+                             key=f"{key}_h", help=help_text)
     with col_m:
-        st.markdown("**(분)**")
-        mm = st.number_input("", min_value=0, max_value=59, value=0, step=5,
-                             key=f"{key}_m", label_visibility="collapsed")
+        mm = st.number_input("(분)", min_value=0, max_value=59, value=0, step=5, key=f"{key}_m")
     return float(hh) + float(mm)/60.0
 
 # 1행: Major OTT | Minor OTT
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-major_ott = time_pair_with_popover(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
-minor_ott = time_pair_with_popover(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
+major_ott = time_pair_with_helpicon(r1c1, r1c2, "Major OTT", "major", MAJOR_HELP)
+minor_ott = time_pair_with_helpicon(r1c3, r1c4, "Minor OTT", "minor", MINOR_HELP)
 
 # 2행: YouTube | 스포츠
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
-youtube = time_pair_with_popover(r2c1, r2c2, "YouTube", "yt")
-sports  = time_pair_with_popover(r2c3, r2c4, "스포츠", "sports")
+youtube = time_pair_with_helpicon(r2c1, r2c2, "YouTube", "yt")
+sports  = time_pair_with_helpicon(r2c3, r2c4, "스포츠", "sports")
 
 # 3행: 쇼핑 / 사용 OTT 수
 r3c1, r3c2 = st.columns(2)
@@ -390,14 +377,12 @@ cols = st.columns(3)
 for i, colname in enumerate(sorted(x_onoff_cols, key=lambda s: int(s[1:]))):
     label = X_LABELS.get(colname, colname)
     with cols[i % 3]:
-        val = st.checkbox(label, value=False, key=f"on_{colname}")
-        onoff_selections[colname] = val
+        onoff_selections[colname] = st.checkbox(label, value=False, key=f"on_{colname}")
 
 # ================================
 # 결과 모달(dialog)
 # ================================
 def _result_body(pred_label: str, prob_df: pd.DataFrame | None):
-    # 상단 라인: MBTI 크게 + 한 줄 설명을 오른쪽에(“유형” 제거)
     summary = SUMMARY_LINE.get(pred_label, "")
     st.markdown(
         f"""
@@ -488,6 +473,7 @@ if st.session_state.show_modal:
     if st.session_state.modal_last_shown != token:
         show_result_dialog()
         st.session_state.modal_last_shown = token
+
 
 
 
